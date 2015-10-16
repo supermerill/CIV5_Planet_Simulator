@@ -5148,6 +5148,9 @@ function AddFeatures()
 	local featureOasis = FeatureTypes.FEATURE_OASIS
 	local featureMarsh = FeatureTypes.FEATURE_MARSH
 	local terrainSnow	= GameInfoTypes["TERRAIN_SNOW"];
+	-- Edit by TowerTipping
+	local terrainDesert	= GameInfoTypes["TERRAIN_DESERT"];
+	-- /TowerTipping
 	local W, H = Map.GetGridSize()
 	local WH = W*H
 
@@ -5179,10 +5182,20 @@ function AddFeatures()
                         for n = 1, #tiles do
                             local ii = tiles[n]
                             local nPlot = Map.GetPlotByIndex(ii)
-                            if nPlot:GetTerrainType() == terrainSnow then
+							-- Edit by TowerTipping
+                            -- if nPlot:GetTerrainType() == terrainSnow then
+								-- forest = false
+								-- break
+							-- end
+							local terrainType = nPlot:GetTerrainType()
+							if terrainType == terrainSnow then
                                 forest = false
                                 break
+							elseif terrainType == terrainDesert then
+								forest = false
+								break
                             end
+							-- /TowerTipping
                         end
                         if forest == true then
                             plot:SetFeatureType(featureForest,-1)
@@ -5195,7 +5208,9 @@ function AddFeatures()
 				if temperatureMap.data[i] < mc.jungleMinTemperature and temperatureMap.data[i] > mc.treesMinTemperature then
 					plot:SetFeatureType(featureForest,-1)
 				elseif temperatureMap.data[i] >= mc.jungleMinTemperature then
-					local terrainDesert	= GameInfoTypes["TERRAIN_DESERT"];
+					-- Edit by TowerTipping
+					-- local terrainDesert	= GameInfoTypes["TERRAIN_DESERT"];
+					-- /TowerTipping
 					local tiles = GetCircle(i,1)
 					local desertCount = 0
 					for n=1,#tiles do
