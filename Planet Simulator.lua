@@ -1,7 +1,7 @@
 --------------------------------------------------------------------------------
 --Planet Simulator by Bobert13
 --Based on: PerfectWorld3.lua map script (c)2010 Rich Marinaccio
---version 1
+--version LL
 --------------------------------------------------------------------------------
 --This map script uses simulated plate tectonics to create landforms, and generates
 --climate based on a simplified model of geostrophic and monsoon wind patterns.
@@ -9,7 +9,14 @@
 --used to create the landforms.
 --
 --Version History
---1 - YAY VERSION 1!!
+--LL	- Bugfix: Resource generation now affected by correct option
+--		- Bugfix: Fixed rare crash when script couldn't get close to target land percentage
+--		- Enabled world age, temperature, rainfall, and sea level options that adjust existing MapConstants
+--		- Added coast width controlling how far coasts tend to extend from land
+--		(version LL changes by LamilLerran)
+--TT	- Prevented forests from spawning on deserts
+--		(version TT changes by TowerTipping)
+--1		- YAY VERSION 1!!
 
 include("MapGenerator");
 include("FeatureGenerator");
@@ -28,9 +35,9 @@ function MapConstants:New()
 	-------------------------------------------------------------------------------------------
 	--Landmass constants
 	-------------------------------------------------------------------------------------------
-	mconst.landPercent = 0.31 		--Percent of land tiles on the map.
-	mconst.hillsPercent = 0.70 		--Percent of dry land that is below the hill elevation deviance threshold.
-	mconst.mountainsPercent = 0.94 	--Percent of dry land that is below the mountain elevation deviance threshold.
+	--(Moved)mconst.landPercent = 0.31 		--Now in InitializeSeaLevel()
+	--(Moved)mconst.hillsPercent = 0.70 		--Now in InitializeWorldAge()
+	--(Moved)mconst.mountainsPercent = 0.94 	--Now in InitializeWorldAge()
 	--(Deprecated)mconst.mountainWeight = 0.7		--Weight of the mountain elevation map versus the coastline elevation map.
 
 	--Adjusting these frequences will generate larger or smaller landmasses and features. Default frequencies for map of width 128.
@@ -60,36 +67,38 @@ function MapConstants:New()
 	-------------------------------------------------------------------------------------------
 	--Terrain type constants
 	-------------------------------------------------------------------------------------------
-	mconst.desertPercent = 0.25		--Percent of land that is below the desert rainfall threshold.
-	mconst.desertMinTemperature = 0.35 --Coldest absolute temperature allowed to be desert, plains if colder.
-	mconst.plainsPercent = 0.50 	--Percent of land that is below the plains rainfall threshold.
-	mconst.tundraTemperature = 0.31	--Absolute temperature below which is tundra.
-	mconst.snowTemperature = 0.26 	--Absolute temperature below which is snow.
+	--(Moved)mconst.desertPercent = 0.25		--Now in InitializeRainfall()
+	--(Moved)mconst.desertMinTemperature = 0.35 --Now in InitializeTemperature()
+	--(Moved)mconst.plainsPercent = 0.50 	--Now in InitializeRainfall()
+	--(Moved)mconst.tundraTemperature = 0.31	--Now in InitializeTemperature()
+	--(Moved)mconst.snowTemperature = 0.26 	--Now in InitializeTemperature()
+	--For below see thread http://forums.civfanatics.com/showthread.php?t=544360
+	--(Elsewhere)mconst.coastExpansionChance = {4,4}	--In InitializeCoasts()
 	-------------------------------------------------------------------------------------------
 	--Terrain feature constants
 	-------------------------------------------------------------------------------------------
-	mconst.zeroTreesPercent = 0.70 	--Percent of land that is below the rainfall threshold where no trees can appear.
-	mconst.treesMinTemperature = 0.28 --Coldest absolute temperature where trees appear.
+	--(Moved)mconst.zeroTreesPercent = 0.70 	--Now in InitializeRainfall()
+	--(Moved)mconst.treesMinTemperature = 0.28 --Now in InitializeTemperature()
 
-	mconst.junglePercent = 0.88 	--Percent of land below the jungle rainfall threshold.
-	mconst.jungleMinTemperature = 0.66 --Coldest absolute temperature allowed to be jungle, forest if colder.
+	--(Moved)mconst.junglePercent = 0.88 	--Now in InitializeRainfall()
+	--(Moved)mconst.jungleMinTemperature = 0.66 --Now in InitializeTemperature()
 
-	mconst.riverPercent = 0.18 		--percent of river junctions that are large enough to become rivers.
-	mconst.riverRainCheatFactor = 1.6 --This value is multiplied by each river step. Values greater than one favor watershed size. Values less than one favor actual rain amount.
-	mconst.minRiverSize = 24		--Helps to prevent a lot of really short rivers. Recommended values are 15 to 40. -Bobert13
+	--(Moved)mconst.riverPercent = 0.18 		--Now in InitializeRainfall()
+	--(Moved)mconst.riverRainCheatFactor = 1.6 --Now in InitializeRainfall()
+	--(Moved)mconst.minRiverSize = 24		--Now in InitializeRainfall()
 	mconst.minOceanSize = 5			--Fill in any lakes smaller than this. It looks bad to have large river systems flowing into a tiny lake.
 
 	--(Deprecated)mconst.marshPercent = 0.92 	--Percent of land below the jungle marsh rainfall threshold.
-	mconst.marshElevation = 0.07 	--Percent of land below the lowlands marsh threshold.
+	--(Moved)mconst.marshElevation = 0.07 	--Now in InitializeRainfall()
 
 	mconst.OasisThreshold = 7 		--Maximum food around a tile for it to be considered for an Oasis -Bobert13
 
-	mconst.atollNorthLatitudeLimit = 47 --Northern Atoll latitude limit.
-	mconst.atollSouthLatitudeLimit = -47 --Southern Atoll latitude limit.
+	--(Moved)mconst.atollNorthLatitudeLimit = 47 --Now in InitializeTemperature()
+	--(Moved)mconst.atollSouthLatitudeLimit = -47 --Now in InitializeTemperature()
 	mconst.atollMinDeepWaterNeighbors = 4 --Minimum nearby deeap water tiles for it to be considered for an Atoll.
 
-	mconst.iceNorthLatitudeLimit = 63 --Northern Ice latitude limit.
-	mconst.iceSouthLatitudeLimit = -63 --Southern Ice latitude limit.
+	--(Moved)mconst.iceNorthLatitudeLimit = 63 --Now in InitializeTemperature()
+	--(Moved)mconst.iceSouthLatitudeLimit = -63 --Now in InitializeTemperature()
 	-------------------------------------------------------------------------------------------
 	--Weather constants
 	-------------------------------------------------------------------------------------------
@@ -167,8 +176,186 @@ function MapConstants:New()
 	mconst.SPOLAR = 5
 
 	mconst.MultiPlayer = Game:IsNetworkMultiPlayer()
-
+	
+	mconst:InitializeWorldAge()
+	mconst:InitializeTemperature()
+	mconst:InitializeRainfall()
+	mconst:InitializeSeaLevel()
+	mconst:InitializeCoasts()
+	--mconst:NormalizeLatitudeForArea()
 	return mconst
+end
+-------------------------------------------------------------------------------------------
+function MapConstants:InitializeWorldAge()
+	local age = Map.GetCustomOption(1)
+	if age == 4 then
+		age = 1 + Map.Rand(3, "Random World Age Option - Planet Simulator");
+	end
+	if age == 1 then		--Young
+		print("Setting young world constants - Planet Simulator")
+		self.hillsPercent = 0.65	
+		self.mountainsPercent = 0.90
+	elseif age == 3 then	--Old
+		print("Setting old world constants - Planet Simulator")
+		self.hillsPercent = 0.74 		
+		self.mountainsPercent = 0.97 		
+	else									--Standard
+		print("Setting middle aged world constants - Planet Simulator")
+		self.hillsPercent = 0.70 		--Percent of dry land that is below the hill elevation deviance threshold.		
+		self.mountainsPercent = 0.94	--Percent of dry land that is below the mountain elevation deviance threshold. 	
+	end
+end
+-------------------------------------------------------------------------------------------
+function MapConstants:InitializeTemperature()
+	local temp = Map.GetCustomOption(2)
+	if temp == 4 then
+		temp = 1 + Map.Rand(3, "Random World Temperature Option - Planet Simulator");
+	end
+	if temp == 1 then						--Cold
+		print("Setting cold world constants - Planet Simulator")
+		self.desertMinTemperature = 0.40
+		self.tundraTemperature = 0.35
+		self.snowTemperature = 0.29
+		
+		self.treesMinTemperature = 0.30
+		self.jungleMinTemperature = 0.75
+
+		self.atollNorthLatitudeLimit = 42
+		self.atollSouthLatitudeLimit = -42
+		self.iceNorthLatitudeLimit = 60
+		self.iceSouthLatitudeLimit = -60
+	elseif temp == 3 then					--Warm
+		print("Setting warm world constants - Planet Simulator")
+		self.desertMinTemperature = 0.32
+		self.tundraTemperature = 0.26
+		self.snowTemperature = 0.20
+		
+		self.treesMinTemperature = 0.22
+		self.jungleMinTemperature = 0.60
+
+		self.atollNorthLatitudeLimit = 51
+		self.atollSouthLatitudeLimit = -51
+		self.iceNorthLatitudeLimit = 65
+		self.iceSouthLatitudeLimit = -65
+	else									--Standard
+		print("Setting temperate world constants - Planet Simulator")
+		self.desertMinTemperature = 0.35	--Coldest absolute temperature allowed to be desert, plains if colder.
+		self.tundraTemperature = 0.31		--Absolute temperature below which is tundra.
+		self.snowTemperature = 0.26 		--Absolute temperature below which is snow.
+		
+		self.treesMinTemperature = 0.28		--Coldest absolute temperature where trees appear.
+		self.jungleMinTemperature = 0.66	--Coldest absolute temperature allowed to be jungle, forest if colder.
+
+		self.atollNorthLatitudeLimit = 47	--Northern Atoll latitude limit.
+		self.atollSouthLatitudeLimit = -47	--Southern Atoll latitude limit.
+		self.iceNorthLatitudeLimit = 63		--Northern Ice latitude limit.
+		self.iceSouthLatitudeLimit = -63	--Southern Ice latitude limit.
+	end
+end
+-------------------------------------------------------------------------------------------
+function MapConstants:InitializeRainfall()
+	local rain = Map.GetCustomOption(3)
+	if rain == 4 then
+		rain = 1 + Map.Rand(3, "Random World Rainfall Option - Planet Simulator");
+	end
+	if rain == 1 then					--Arid
+		print("Setting arid world constants - Planet Simulator")
+		self.desertPercent = 0.33
+		self.plainsPercent = 0.55
+		self.zeroTreesPercent = 0.78
+		self.junglePercent = 0.94
+		
+		self.riverPercent = 0.14
+		self.riverRainCheatFactor = 1.2
+		self.minRiverSize = 32
+		self.marshElevation = 0.04
+	elseif rain == 3 then				--Wet
+		print("Setting wet world constants - Planet Simulator")
+		self.desertPercent = 0.20
+		self.plainsPercent = 0.45
+		self.zeroTreesPercent = 0.62
+		self.junglePercent = 0.80
+		
+		self.riverPercent = 0.25
+		self.riverRainCheatFactor = 1.6
+		self.minRiverSize = 16
+		self.marshElevation = 0.10
+	else								--Standard
+		print("Setting normal rainfall constants - Planet Simulator")
+		self.desertPercent = 0.25		--Percent of land that is below the desert rainfall threshold.
+		self.plainsPercent = 0.50 		--Percent of land that is below the plains rainfall threshold.
+		self.zeroTreesPercent = 0.70 	--Percent of land that is below the rainfall threshold where no trees can appear.
+		self.junglePercent = 0.88 		--Percent of land below the jungle rainfall threshold.
+		
+		self.riverPercent = 0.18 		--percent of river junctions that are large enough to become rivers.
+		self.riverRainCheatFactor = 1.6 --This value is multiplied by each river step. Values greater than one favor watershed size. Values less than one favor actual rain amount.
+		self.minRiverSize = 24			--Helps to prevent a lot of really short rivers. Recommended values are 15 to 40. -Bobert13
+		self.marshElevation = 0.07 		--Percent of land below the lowlands marsh threshold.
+	end
+end
+-------------------------------------------------------------------------------------------
+function MapConstants:InitializeSeaLevel()
+	local sea = Map.GetCustomOption(4)
+	if sea == 4 then
+		sea = 1 + Map.Rand(3, "Random Sea Level Option - Planet Simulator");
+	end
+	if sea == 1 then			--Low
+		print("Setting low sea level constants - Planet Simulator")
+		self.landPercent = 0.37 
+	elseif sea == 3 then		--High
+		print("Setting high sea level constants - Planet Simulator")
+		self.landPercent = 0.25		
+	else						--Standard
+		print("Setting medium sea level constants - Planet Simulator")
+		self.landPercent = 0.31 --Percent of land tiles on the map.
+	end
+end
+-------------------------------------------------------------------------------------------
+function MapConstants:InitializeCoasts()
+	-- Superfluously Wide coasts can generate coast tiles more than 3 away from land,
+	-- where the resources will be useless. However, this setting makes it quite likely
+	-- that all continents will be connected by coast.
+	-- Land-Adjacent Only coasts means that every coast tile will be adjacent to land,
+	-- which means there will be fewer resources available in the sea, but also increases
+	-- the chance of separation between continents (and gives the highest chance for more
+	-- than two ocean-separated continental regions).
+	-- Random does not include the extreme cases of Superfluously Wide or Land-Adjacent
+	-- Only coasts.
+	local width = Map.GetCustomOption(8)
+	if width == 8 then
+		width = 2 + Map.Rand(5, "Random Coastal Width Option - Planet Simulator")
+	end
+	if width == 7 then		--Superfluously Wide
+		print("Setting superfluously wide coast constants - Planet Simulator")
+		self.coastExpansionChance = {1,2,3,4,6,8}
+	elseif width == 6 then	--Very Wide
+		print("Setting very wide coast constants - Planet Simulator")
+		self.coastExpansionChance = {1,2}
+	elseif width == 5 then	--Wide
+		print("Setting wide coast constants - Planet Simulator")
+		self.coastExpansionChance = {2,3}
+	elseif width == 3 then	--Narrow
+		print("Setting narrow coast constants - Planet Simulator")
+		self.coastExpansionChance = {6,8}
+	elseif width == 2 then	--Very Narrow
+		print("Setting very narrow coast constants - Planet Simulator")
+		self.coastExpansionChance = {10}
+	elseif width == 1 then	--Land-Adjacent Only
+		print("Setting land-adjacent only coast constants - Planet Simulator")
+		self.coastExpansionChance = {}
+	else					--Standard
+		print("Setting standard width coast constants - Planet Simulator")
+		self.coastExpansionChance = {4,4}	--Odds of extending coast beyond one tile. Smaller is more likely. -LamilLerran
+	end
+end
+-------------------------------------------------------------------------------------------
+function MapConstants:NormalizeLatitudeForArea()
+	--This function is not complete. Do not call it; it will crash -LamilLerran
+	if Map.GetCustomOption(TODO) == TODO then
+		--TODO
+	else
+		-- Do Nothing
+	end
 end
 -------------------------------------------------------------------------------------------
 function MapConstants:GetOppositeDir(dir)
@@ -182,29 +369,29 @@ end
 -------------------------------------------------------------------------------
 --functions that Civ needs
 -------------------------------------------------------------------------------
-function GetCoreMapOptions()
+--function GetCoreMapOptions()
 	--[[ All options have a default SortPriority of 0. Lower values will be shown above
 	higher values. Negative integers are valid. So the Core Map Options, which should
 	always be at the top of the list, are getting negative values from -99 to -95. Note
 	that any set of options with identical SortPriority will be sorted alphabetically. ]]--
-	local resources = {
-		Name = "TXT_KEY_MAP_OPTION_RESOURCES",
-		Values = {
-			"TXT_KEY_MAP_OPTION_SPARSE",
-			"TXT_KEY_MAP_OPTION_STANDARD",
-			"TXT_KEY_MAP_OPTION_ABUNDANT",
-			"TXT_KEY_MAP_OPTION_LEGENDARY_START",
-			"TXT_KEY_MAP_OPTION_STRATEGIC_BALANCE",
-			"TXT_KEY_MAP_OPTION_RANDOM",
-		},
-		DefaultValue = 2,
-		SortPriority = 99,
-	};
-	return resources
-end
+	--local resources = {
+		--Name = "TXT_KEY_MAP_OPTION_RESOURCES",
+		--Values = {
+			--"TXT_KEY_MAP_OPTION_SPARSE",
+			--"TXT_KEY_MAP_OPTION_STANDARD",
+			--"TXT_KEY_MAP_OPTION_ABUNDANT",
+			--"TXT_KEY_MAP_OPTION_LEGENDARY_START",
+			--"TXT_KEY_MAP_OPTION_STRATEGIC_BALANCE",
+			--"TXT_KEY_MAP_OPTION_RANDOM",
+		--},
+		--DefaultValue = 2,
+		--SortPriority = 99,
+	--};
+	--return resources
+--end
 -------------------------------------------------------------------------------
 function GetMapScriptInfo()
-	local resources = GetCoreMapOptions()
+	local world_age, temperature, rainfall, sea_level, resources = GetCoreMapOptions()
 	return {
 		Name = "Planet Simulator",
 		Description = "Tectonic Landmasses meet Geostrophic Weather",
@@ -214,6 +401,11 @@ function GetMapScriptInfo()
 		SortIndex = 1,
 		CustomOptions =
         {
+			world_age,
+			temperature,
+			rainfall,
+			sea_level,
+			resources,
 			{
 				Name = "Map Preset",
 				Values =
@@ -234,7 +426,23 @@ function GetMapScriptInfo()
                 DefaultValue = 1,
                 SortPriority = 1,
             },
-			resources
+			-- Following options by LamilLerran
+			{
+				Name = "Coastal Waters",
+				Values = 
+				{
+					"Land-Adjacent Only",
+					"Very Narrow",
+					"Narrow",
+					"Standard",
+					"Wide",
+					"Very Wide",
+					"Superfluously Wide",
+					"Random"
+				},
+				DefaultValue = 4,
+				SortPriority = 3,
+			}
         },
 	};
 end
@@ -248,17 +456,17 @@ function GetMapInitData(worldSize)
 		[GameInfo.Worlds.WORLDSIZE_LARGE.ID] = {104, 64},
 		[GameInfo.Worlds.WORLDSIZE_HUGE.ID] = {128, 80}
 		}
-	if Map.GetCustomOption(6) == 2 then
+	--if Map.GetCustomOption(6) == 2 then
 		-- Enlarge terra-style maps to create expansion room on the new world
-		worldsizes = {
-		[GameInfo.Worlds.WORLDSIZE_DUEL.ID] = {52, 32},
-		[GameInfo.Worlds.WORLDSIZE_TINY.ID] = {64, 40},
-		[GameInfo.Worlds.WORLDSIZE_SMALL.ID] = {84, 52},
-		[GameInfo.Worlds.WORLDSIZE_STANDARD.ID] = {104, 64},
-		[GameInfo.Worlds.WORLDSIZE_LARGE.ID] = {122, 76},
-		[GameInfo.Worlds.WORLDSIZE_HUGE.ID] = {144, 90},
-		}
-	end
+		--worldsizes = {
+		--[GameInfo.Worlds.WORLDSIZE_DUEL.ID] = {52, 32},
+		--[GameInfo.Worlds.WORLDSIZE_TINY.ID] = {64, 40},
+		--[GameInfo.Worlds.WORLDSIZE_SMALL.ID] = {84, 52},
+		--[GameInfo.Worlds.WORLDSIZE_STANDARD.ID] = {104, 64},
+		--[GameInfo.Worlds.WORLDSIZE_LARGE.ID] = {122, 76},
+		--[GameInfo.Worlds.WORLDSIZE_HUGE.ID] = {144, 90},
+		--}
+	--end
 	local grid_size = worldsizes[worldSize];
 	--
 	local world = GameInfo.Worlds[worldSize];
@@ -3082,7 +3290,7 @@ function GenerateFaults()
 	end
 
 	local faults = {}
-	for i = 0, #PlateMap.ID, 1 do
+	for i = 0, #PlateMap.ID, 1 do --This looks like an off-by-one error, but I'm hesitant to change it -LamilLerran
 		local index = GetPlateByID(PlateMap.ID[i])
 		--local x = i%W
 		--local y = (i-x)/W
@@ -3161,9 +3369,9 @@ function DetermineRiftZone(W,H,k,centerRift,modifier)
     local RiftAmt = 0
     local typeScalar = 0
 
-    if Map.GetCustomOption(1) == 1 then
+    if Map.GetCustomOption(6) == 1 then
         typeScalar = 20
-    elseif Map.GetCustomOption(1) == 2 then
+    elseif Map.GetCustomOption(6) == 2 then
         typeScalar = 12
     else
         typeScalar = 20
@@ -3232,7 +3440,7 @@ function Blockade(k,ID,W,H)
 		big = big + PlateMap.size[GetPlateByID(PlateMap.ToDo[n])]
 	end
 
-	if big > (W*H)/6 and Map.GetCustomOption(1) == 1 then
+	if big > (W*H)/6 and Map.GetCustomOption(6) == 1 then
 		-- print("too big")
 		return true
 	else
@@ -3351,6 +3559,7 @@ function CreateContinentalShelf(W,H)
     -- end
 
     if contPercent / mc.landPercent > 1.05 then
+		local foundSink = false	-- True if a plate to sink has been found -LamilLerran
         local nearest = contPercent - mc.landPercent
         for i = 1, #Plates do
             local index = GetPlateByID(Plates[i])
@@ -3360,15 +3569,21 @@ function CreateContinentalShelf(W,H)
                 if math.abs(size - target) < nearest then
                     nearest = math.abs(size - target)
                     sinkPlate = Plates[i]
+					foundSink = true
                 end
             end
         end
-        local index = GetPlateByID(sinkPlate)
-        PlateMap.type[index] = 0
-        contSize = contSize - PlateMap.size[index]
-        contPercent = contSize/WH
-        contCount = contCount - 1
-        --print(string.format("sinkPlate is %d, it's size is %d", sinkPlate, PlateMap.size[GetPlateByID(sinkPlate)]))
+		if foundSink then
+			local index = GetPlateByID(sinkPlate)
+			--print(string.format("index is %d, sinkPlate is %d, #Plates is %d", (index and index or -1), (sinkPlate and sinkPlate or -1),#Plates))
+			PlateMap.type[index] = 0
+			contSize = contSize - PlateMap.size[index]
+			contPercent = contSize/WH
+			contCount = contCount - 1
+			--print(string.format("sinkPlate is %d, it's size is %d", sinkPlate, PlateMap.size[GetPlateByID(sinkPlate)]))
+		else
+			print("Skipped sinking plate because every option moved land percentage away from target. - Planet Simulator")
+		end
     end
 
 	print(string.format("%d plates flipped to make %.2f%% of the map continental shelf. - Planet Simulator", contCount, contPercent * 100))
@@ -3588,7 +3803,7 @@ function SimulateTectonics(W,H,xWrap,yWrap)
 
 	GenerateFaults()
 
-    if Map.GetCustomOption(1) == 1 then
+    if Map.GetCustomOption(6) == 1 then
         --print("Generating Continents style map")
         CreateContinentalShelf(W,H)
     else
@@ -4611,7 +4826,7 @@ function GeneratePlotTypes()
 	riverMap:SetFlowDestinations()
 	riverMap:SetRiverSizes(rainfallMap)
 
-	GenerateCoasts();
+	GenerateCoasts({expansion_diceroll_table = mc.coastExpansionChance});
 
 	--removes "ocean" tiles from inland seas
 	for n=1, #PlateMap.index, 1 do
@@ -5890,12 +6105,12 @@ end
 -------------------------------------------------------------------------------------------
 function StartPlotSystem()
 	-- Get Resources setting input by user.
-	local res = Map.GetCustomOption(2)
+	local res = Map.GetCustomOption(5)
 	if res == 6 then
 		res = 1 + Map.Rand(3, "Random Resources Option - Lua");
 	end
 
-	local starts = Map.GetCustomOption(1)
+	local starts = Map.GetCustomOption(6)
 	local divMethod = nil
 	if starts == 1 then
 		divMethod = 2
