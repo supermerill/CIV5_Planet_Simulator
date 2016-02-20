@@ -1,7 +1,7 @@
 --------------------------------------------------------------------------------
 --Planet Simulator by Bobert13
 --Based on: PerfectWorld3.lua map script (c)2010 Rich Marinaccio
---version LL
+--version LL2beta
 --------------------------------------------------------------------------------
 --This map script uses simulated plate tectonics to create landforms, and generates
 --climate based on a simplified model of geostrophic and monsoon wind patterns.
@@ -9,6 +9,13 @@
 --used to create the landforms.
 --
 --Version History
+--LL2beta- Changed mountain generation to emphasize inland mountains along convergent
+--		  faults. This moves mountains away from the coasts and causes most mountains
+--		  to form in long ranges.
+--		- Added "Islands" option for generation of different numbers and types of islands
+--		- Introduced bug where small maps (mostly smaller than standard) sometimes generate
+--		  with large amounts of tundra over the entire map. I suspect it happens when there
+--		  are no continental-continental convergent faults.
 --LL	- Bugfix: Resource generation now affected by correct option
 --		- Bugfix: Fixed rare crash when script couldn't get close to target land percentage
 --		- Enabled world age, temperature, rainfall, and sea level options that adjust existing MapConstants
@@ -23,6 +30,8 @@ include("FeatureGenerator");
 include("TerrainGenerator");
 -- bit = require("bit")
 
+
+
 MapConstants = {}
 Time = nil
 Time2 = nil
@@ -36,15 +45,16 @@ function MapConstants:New()
 	--Landmass constants
 	-------------------------------------------------------------------------------------------
 	--(Moved)mconst.landPercent = 0.31 		--Now in InitializeSeaLevel()
+	mconst:InitializeSeaLevel()
 	--(Moved)mconst.hillsPercent = 0.70 		--Now in InitializeWorldAge()
 	--(Moved)mconst.mountainsPercent = 0.94 	--Now in InitializeWorldAge()
-	--(Deprecated)mconst.mountainWeight = 0.7		--Weight of the mountain elevation map versus the coastline elevation map.
-
-	--Adjusting these frequences will generate larger or smaller landmasses and features. Default frequencies for map of width 128.
-	--(Deprecated)mconst.twistMinFreq = 0.02 		--Recommended range:[0.02 to 0.1] Lower values result in more blob-like landmasses, higher values make more stringy landmasses, even higher values results in lots and lots of islands.
-	--(Deprecated)mconst.twistMaxFreq = 0.055		--Recommended range:[0.03 to 0.3] Lower values result in Pangeas, higher values makes continental divisions and stringy features more likely, and very high values  result in a lot of stringy continents and islands.
-	--(Deprecated)mconst.twistVar = 0.14 			--Recommended range:[0.01 to 0.3] Determines the deviation range in elevation from one plot to another. Low values result in regular landmasses with few islands, higher values result in more islands and more variance on landmasses and coastlines.
-	--(Deprecated)mconst.mountainFreq = 0.4 		--Recommended range:[0.1 to 0.8] Lower values make large, long, mountain ranges. Higher values make sporadic mountainous features.
+	mconst.landPercentCheat = 0.01	--What proportion of total tiles more continental plate tiles there are than
+									--land tiles (at least in terms of the goal; actually results depend on
+									--plate generation and can vary). This value tends to not create lakes or
+									--islands other than ones we deliberately added. (Larger numbers may lead to
+									--lakes and smaller numbers to islands, but this is inconsistent.)
+									--Note that this is changed by InitializeIslands() in some cases.
+	mconst.continentalPercent = mconst.landPercent + mconst.landPercentCheat	--Percent of tiles on continental/pangeal plates
 
 	--These settings affect Plate Tectonics.
 	--none, yet
@@ -72,8 +82,11 @@ function MapConstants:New()
 	--(Moved)mconst.plainsPercent = 0.50 	--Now in InitializeRainfall()
 	--(Moved)mconst.tundraTemperature = 0.31	--Now in InitializeTemperature()
 	--(Moved)mconst.snowTemperature = 0.26 	--Now in InitializeTemperature()
-	--For below see thread http://forums.civfanatics.com/showthread.php?t=544360
+	--For below see http://forums.civfanatics.com/showthread.php?t=544360
 	--(Elsewhere)mconst.coastExpansionChance = {4,4}	--In InitializeCoasts()
+	
+	--(Elsewhere)mconst.oceanicVolcanoFrequency = 0.20	--In InitializeIslands()
+	--(Elsewhere)mconst.islandExpansionFactor = 1			--In InitializeIslands()
 	-------------------------------------------------------------------------------------------
 	--Terrain feature constants
 	-------------------------------------------------------------------------------------------
@@ -95,7 +108,7 @@ function MapConstants:New()
 
 	--(Moved)mconst.atollNorthLatitudeLimit = 47 --Now in InitializeTemperature()
 	--(Moved)mconst.atollSouthLatitudeLimit = -47 --Now in InitializeTemperature()
-	mconst.atollMinDeepWaterNeighbors = 4 --Minimum nearby deeap water tiles for it to be considered for an Atoll.
+	mconst.atollMinDeepWaterNeighbors = 4 --Minimum nearby deep water tiles for it to be considered for an Atoll.
 
 	--(Moved)mconst.iceNorthLatitudeLimit = 63 --Now in InitializeTemperature()
 	--(Moved)mconst.iceSouthLatitudeLimit = -63 --Now in InitializeTemperature()
@@ -159,6 +172,7 @@ function MapConstants:New()
 	mconst.E = 4
 	mconst.SE = 5
 	mconst.SW = 6
+	mconst.DIRECTIONS = Set:New({mconst.C, mconst.W, mconst.NW, mconst.NE, mconst.E, mconst.SE, mconst.SW})
 
 	--flow directions
 	mconst.NOFLOW = 0
@@ -174,15 +188,28 @@ function MapConstants:New()
 	mconst.SEQUATOR = 3
 	mconst.STEMPERATE = 4
 	mconst.SPOLAR = 5
+	
+	--plate types
+	mconst.OCEANIC = 0
+	mconst.PANGEAL = 1
+	mconst.CONTINENTAL = 1
+	
+	--fault types
+	mconst.NOFAULT = 0
+	mconst.MINORFAULT = 1
+	mconst.DIVERGENTFAULT = 2
+	mconst.TRANSFORMFAULT = 3
+	mconst.CONVERGENTFAULT = 4
 
 	mconst.MultiPlayer = Game:IsNetworkMultiPlayer()
-	
-	mconst:InitializeWorldAge()
+
+	mconst:InitializeWorldAge()	
 	mconst:InitializeTemperature()
 	mconst:InitializeRainfall()
-	mconst:InitializeSeaLevel()
 	mconst:InitializeCoasts()
 	--mconst:NormalizeLatitudeForArea()
+	mconst:InitializeLakes()
+	mconst:InitializeIslands()
 	return mconst
 end
 -------------------------------------------------------------------------------------------
@@ -358,8 +385,81 @@ function MapConstants:NormalizeLatitudeForArea()
 	end
 end
 -------------------------------------------------------------------------------------------
+function MapConstants:InitializeLakes()
+	self.lakeFactor = 1
+	--TODO: Make this actually do something useful
+	--[[local lakes = Map.GetCustomOption(9)
+	if lakes == 4 then
+		lakes = 1 + Map.Rand(3, "Random Lakes Option - Planet Simulator");
+	end
+	if lakes == 1 then		--Uncommon
+		print("Setting uncommon lakes constants - Planet Simulator")
+		self.lakeFactor = 0.4
+	elseif lakes == 3 then	--Frequent
+		print("Setting frequent lakes constants - Planet Simulator")
+		self.lakeFactor = 2
+	else					--Standard
+		print("Setting standard lakes constants - Planet Simulator")
+		self.lakeFactor = 1	--adjusts target number of lakes in AddLakes(); larger means more
+	end]]
+end
+-------------------------------------------------------------------------------------------
+function MapConstants:InitializeIslands()
+	--Warning: could use some fine tuning, especially for island expansion -LamilLerran
+	local isles = Map.GetCustomOption(9)
+	if isles == 6 then
+		isles = 1 + Map.Rand(5, "Random Oceanic Islands Option - Planet Simulator");
+	end
+	if isles == 1 then		--Minimal
+		print("Setting minimal islands constants - Planet Simulator")
+		self.hotspotFrequency = 0
+		self.oceanicVolcanoFrequency = 0.02
+		self.islandExpansionFactor = 0
+	elseif isles == 2 then	--Scattered and Small
+		print("Setting scattered and small islands constants - Planet Simulator")
+		self.hotspotFrequency = 0.2
+		self.oceanicVolcanoFrequency = 0.02
+		self.islandExpansionFactor = 0
+	elseif isles == 3 then	--Large and Infrequent
+		print("Setting large and infrequent islands constants - Planet Simulator")
+		self.hotspotFrequency = 0
+		self.oceanicVolcanoFrequency = 0.04
+		self.islandExpansionFactor = .7
+	elseif isles == 5 then	--Frequent and Varied
+		print("Setting frequent and varied islands constants - Planet Simulator")
+		self.hotspotFrequency = 0.05
+		self.oceanicVolcanoFrequency = 0.1
+		self.islandExpansionFactor = .4
+		self.landPercentCheat = self.landPercentCheat - 0.02
+	else					--Arcs of Small Islands
+		print("Setting arcs of small islands constants - Planet Simulator")
+		self.hotspotFrequency = 0			--What proportion of tiles are hotspots
+		self.oceanicVolcanoFrequency = 0.20	--What proportion of tiles on an oceanic faultline or hotspot get an elevation boost?
+		self.islandExpansionFactor = 0			--This tiles adjacent to a "volcano" (as selected above) also get an elevation
+											--boost equal to this factor times the elevation boost of the main "volcano"
+											--When 0, tiles adjacent to a "volcano" are unaffected by it.
+	end
+end
+-------------------------------------------------------------------------------------------
 function MapConstants:GetOppositeDir(dir)
+	if dir == self.C then
+		print("Warning: Finding direction opposite of Center")
+	end
 	return ((dir + 2) % 6) + 1
+end
+-------------------------------------------------------------------------------------------
+function MapConstants:GetClockwiseDir(dir)
+	if dir == self.C then
+		print("Warning: Finding direction clockwise of Center")
+	end
+	return ((dir) % 6) + 1
+end
+-------------------------------------------------------------------------------------------
+function MapConstants:GetCounterclockwiseDir(dir)
+	if dir == self.C then
+		print("Warning: Finding direction counterclockwise of Center")
+	end
+	return ((dir - 2) % 6) + 1
 end
 -------------------------------------------------------------------------------------------
 --Returns a value along a bell curve from a 0 - 1 range
@@ -442,7 +542,34 @@ function GetMapScriptInfo()
 				},
 				DefaultValue = 4,
 				SortPriority = 3,
-			}
+			},
+			{
+				Name = "Islands",
+				Values =
+				{
+					"Minimal",
+					"Scattered and Small",
+					"Large and Infrequent",
+					"Arcs of Small Islands",
+					"Frequent and Varied",
+					"Random"
+				},
+				DefaultValue = 2,
+				SortPriority = 4,
+			},
+			--[[
+			{
+				Name = "Lakes",
+				Values =
+				{
+					"Uncommon",
+					"Standard",
+					"Frequent",
+					"Random"
+				},
+				DefaultValue = 2,
+				SortPriority = 5,
+			},]]
         },
 	};
 end
@@ -976,7 +1103,7 @@ function avgrootbob(guess, bob, root)
 end
 -------------------------------------------------------------------------------------------
 
--- template <int n>
+--[[-- template <int n>
 -- inline double nth_rootd(double x)
 -- {
    -- --const int ebits = 11;
@@ -996,7 +1123,7 @@ end
    -- bob = (bob - bit.lshift(bias, 52)) / root + bit.lshift(bias, 52)
 
    -- return bob
--- end
+-- end]]
 
 -------------------------------------------------------------------------------------------
 function powbob(bob, pow)
@@ -1331,6 +1458,53 @@ function PWRandInt(low, high)
 	end
 end
 -------------------------------------------------------------------------------------------
+-- Set class
+-- Implements a set (unsorted collection without duplicates)
+-------------------------------------------------------------------------------------------
+--Set = inheritsFrom(nil)
+--TODO: Re-standardize Set class construction
+Set = {}
+
+Set.mt = {__index = Set, __len = Set.length}
+
+function Set.length(set)
+	local length = 0
+	for k, v in pairs(set) do
+		length = length + 1
+	end
+	return length
+end
+
+function Set:New(elementsList)
+	--local new_inst = {}
+	--setmetatable(new_inst, {__index = Set});	--setup metatable
+	
+	--local new_inst = Set:create()
+	--local mt = getmetatable(new_inst)
+	--mt.__len = Set.length
+	--setmetatable(new_inst,mt)
+	
+	local new_inst = {}
+	setmetatable(new_inst, Set.mt)
+	
+	for _, element in pairs(elementsList) do
+		new_inst[element] = true
+	end
+	return new_inst
+end
+
+function Set.add(set,item)
+	set[item] = true
+end
+
+function Set.delete(set,item)
+	set[item] = nil
+end
+
+function Set.contains(set,item)
+	return set[item] ~= nil
+end
+-------------------------------------------------------------------------------------------
 -- FloatMap class
 -- This is for storing 2D map data. The 'data' field is a zero based, one
 -- dimensional array. To access map data by x and y coordinates, use the
@@ -1339,7 +1513,7 @@ end
 -------------------------------------------------------------------------------------------
 FloatMap = inheritsFrom(nil)
 
-function FloatMap:New(width, height, wrapX, wrapY)
+function FloatMap:New(width, height, wrapX, wrapY, initValue)
 	local new_inst = {}
 	setmetatable(new_inst, {__index = FloatMap});	--setup metatable
 
@@ -1359,19 +1533,47 @@ function FloatMap:New(width, height, wrapX, wrapY)
 	new_inst.rectHeight = height
 
 	new_inst.data = {}
-	for i = 0,width*height - 1,1 do
-		new_inst.data[i] = 0.0
+	if initValue == nil then	--default to initializing every tile to 0.0 -LL
+		for i = 0,width*height - 1,1 do
+			new_inst.data[i] = 0.0
+		end
+	else
+		for i = 0,width*height - 1,1 do
+			new_inst.data[i] = initValue
+		end
 	end
+		
 
 	return new_inst
 end
 -------------------------------------------------------------------------------------------
-function FloatMap:GetNeighbor(x,y,dir)
+function FloatMap:GetNeighbor(x,y,dir,validate)
+	--Note: by default validate is nil (i.e. false); in this case we will return the off-map
+	--location where the tile would be in non-wrapping cases. When we validate, we return -1
+	--for at least one coordinate of any off-map tile. -LL
+	
+	--Warning: Does not currently allow for Y wrapping -LL
+	
+	--Returns the x coordinate of the neighbor tile, then the y coordinate of the neighbor
+	--tile, then whether this returned tile is a valid map location. Note that if you do
+	--not pass validate = true, the third return value may be wrong!
+	
+	--Starting off the map is never valid
+	if validate then
+		if x < 0 or x >= self.width or y < 0 or y >= self.height then
+			return -1, -1, false
+		end
+	end
+
+	if (dir == nil) then
+		error("Direction is nil in FloatMap:GetNeighbor")
+	end
+	
 	local xx
 	local yy
 	local odd = y % 2
 	if dir == mc.C then
-		return x,y
+		return x,y, x >= 0 and y >= 0
 	elseif dir == mc.W then
 		if x == 0 and self.wrapX then
 			xx = self.width-1
@@ -1380,7 +1582,7 @@ function FloatMap:GetNeighbor(x,y,dir)
 			xx = x - 1
 			yy = y
 		end
-		return xx,yy
+		return xx,yy, xx >= 0 and yy >= 0
 	elseif dir == mc.NW then
 		if x == 0 and odd == 0 and self.wrapX then
 			xx = self.width-1
@@ -1389,7 +1591,10 @@ function FloatMap:GetNeighbor(x,y,dir)
 			xx = x - 1 + odd
 			yy = y + 1
 		end
-		return xx,yy
+		if validate and yy == self.height then
+			yy = -1
+		end
+		return xx,yy, xx >= 0 and yy >= 0
 	elseif dir == mc.NE then
 		if x == self.width-1 and odd == 1 and self.wrapX then
 			xx = 0
@@ -1397,8 +1602,14 @@ function FloatMap:GetNeighbor(x,y,dir)
 		else
 			xx = x + odd
 			yy = y + 1
+			if validate and xx == self.width then
+				xx = -1
+			end
 		end
-		return xx,yy
+		if validate and yy == self.height then
+			yy = -1
+		end
+		return xx,yy, xx >= 0 and yy >= 0
 	elseif dir == mc.E then
 		if x == self.width-1 and self.wrapX then
 			xx = 0
@@ -1406,8 +1617,11 @@ function FloatMap:GetNeighbor(x,y,dir)
 		else
 			xx = x + 1
 			yy = y
+			if validate and xx == self.width then
+				xx = -1
+			end
 		end
-		return xx,yy
+		return xx,yy, xx >= 0 and yy >= 0
 	elseif dir == mc.SE then
 		if x == self.width-1 and odd == 1 and self.wrapX then
 			xx = 0
@@ -1415,8 +1629,11 @@ function FloatMap:GetNeighbor(x,y,dir)
 		else
 			xx = x + odd
 			yy = y - 1
+			if validate and xx == self.width then
+				xx = -1
+			end
 		end
-		return xx,yy
+		return xx,yy, xx >= 0 and yy >= 0
 	elseif dir == mc.SW then
 		if x == 0 and odd == 0 and self.wrapX then
 			xx = self.width - 1
@@ -1425,11 +1642,15 @@ function FloatMap:GetNeighbor(x,y,dir)
 			xx = x - 1 + odd
 			yy = y - 1
 		end
-		return xx,yy
+		return xx,yy, xx >= 0 and yy >= 0
 	else
+		print("Bad direction in FloatMap:GetNeighbor - Planet Simulator")
 		error("Bad direction in FloatMap:GetNeighbor")
 	end
-	return -1,-1
+	
+	error("Invalid exit from FloatMap:GetNeighbor")
+	
+	return -1,-1, false
 end
 -------------------------------------------------------------------------------------------
 function FloatMap:GetIndex(x,y)
@@ -1491,7 +1712,11 @@ function FloatMap:GetRectIndex(x,y)
 	return self:GetIndex(xx,yy)
 end
 -------------------------------------------------------------------------------------------
-function FloatMap:Normalize()
+function FloatMap:Normalize(low,high)
+	--Normalize to range 0,1 if no range is specified in parameters
+	low = low or 0
+	high = high or 1
+	
 	--find highest and lowest values
 	local maxAlt = -1000.0
 	local minAlt = 1000.0
@@ -1794,6 +2019,12 @@ function GetCircle(i,radius)
 end
 -------------------------------------------------------------------------------------------
 function GetSpiral(i,maxRadius,minRadius)
+	--Returns a list of all the tiles at least minRadius from tile i and no more than
+	--maxRadius from tile i. For each such tile that would be located off the map, include
+	--a -1 in the list instead. The list is ordered from small radius to large radius. If
+	--minRadius is omitted, it will default to 0. (description by LamilLerran)
+	--Starts each loop due west, then goes around clockwise.
+
 	local W,H = Map.GetGridSize()
 	local WH = W*H
 	local x = i%W
@@ -3275,23 +3506,24 @@ function GenerateFaults()
 	local W = PlateMap.width
 	local H = PlateMap.height
 	local WH = W*H
-	for i = 1, #PlateMap.index do
-		local xMo = PWRandInt(2,10)
+	for i = 1, #PlateMap.index do	--generate a random velocity for each plate -LamilLerran
+		local xMo = PWRandInt(2,10)	--current plate motion in x direction -LamilLerran
 		local rollx = PWRandInt(0,1)
-			if rollx == 0 then
+			if rollx == 0 then	--50/50 chance to move in -x rather than +x direction -LamilLerran
 				xMo = xMo * -1
 			end
-		local yMo = PWRandInt(2,10)
+		local yMo = PWRandInt(2,10)	--current plate motion in y direction -LamilLerran
 		local rolly = PWRandInt(0,1)
-			if rolly == 0 then
+			if rolly == 0 then	--50/50 chance to move in -y rather than +y direction -LamilLerran
 				yMo = yMo * -1
 			end
-		PlateMap.speed[i] = xMo * 100 + yMo
+		PlateMap.speed[i] = xMo * 100 + yMo	--encode velocity as single integer by multiplying x-motion by 100 -LamilLerran
 	end
 
 	local faults = {}
-	for i = 0, #PlateMap.ID, 1 do --This looks like an off-by-one error, but I'm hesitant to change it -LamilLerran
+	for i = 0, #PlateMap.ID, 1 do --While this looks like an off-by-one error, testing suggests it's correct -LamilLerran
 		local index = GetPlateByID(PlateMap.ID[i])
+		
 		--local x = i%W
 		--local y = (i-x)/W
 		local tiles = GetCircle(i,1)
@@ -3299,7 +3531,8 @@ function GenerateFaults()
 			local k = tiles[n]
 			if PlateMap.ID[i] ~= PlateMap.ID[k] then
 				table.insert(faults,i)
-				PlateMap.fault[i] = 1
+				PlateMap.fault[i] = mc.MINORFAULT	--When a tile is adjacent to a tile from a different plate,
+													--there is at least a minor fault there -LL
 				local add = true
 				for m = 1, #PlateMap.neighbors[index], 1 do
 					if PlateMap.neighbors[index][m] == PlateMap.ID[k] then
@@ -3310,57 +3543,74 @@ function GenerateFaults()
 					table.insert(PlateMap.neighbors[index], PlateMap.ID[k])
 				end
 			else
-				PlateMap.fault[i] = 0
+				PlateMap.fault[i] = mc.NOFAULT	--Tiles in the interior of a plate have no fault -LL
 			end
 		end
 	end
-
+	
 	for k = 1, #faults do
-		local i = faults[k]
+		local i = faults[k]	--k is a fault index; i is a tile index -LL
 		local x = i%W
 		local y = (i-x)/W
 		local ID1 = PlateMap.ID[i]
-		local index1 = GetPlateByID(ID1)
-		local Sx1 = Round(PlateMap.speed[index1]/100)
-		local Sy1 = PlateMap.speed[index1] - (Sx1*100)
+		local index1 = GetPlateByID(ID1)	--index1 is the index of the plate containing tile i -LL
+		local Sx1 = Round(PlateMap.speed[index1]/100)	--Decode velocity into x component ...
+		local Sy1 = PlateMap.speed[index1] - (Sx1*100)	--... and y component -LamilLerran
 		local tiles = GetSpiral(i,1)
-		for n = 2, #tiles, 1 do
+		for n = 2, #tiles, 1 do	--start at 2 since we don't want to consider the central tile -LamilLerran
+			local dir
+			if 		n == 2 then dir = mc.W
+			elseif	n == 3 then dir = mc.NW
+			elseif	n == 4 then dir = mc.NE
+			elseif	n == 5 then dir = mc.E
+			elseif	n == 6 then dir = mc.SE
+			elseif	n == 7 then dir = mc.SW
+			else
+				print("Warning: Unexpected output size from GetSpiral. - Planet Creator")
+			end
 			local ii = tiles[n]
 			if ii ~= -1 then
 				local xx = ii%W
 				local yy = (ii-xx)/W
 				local ID2 = PlateMap.ID[ii]
-				local index2 = GetPlateByID(ID2)
+				local index2 = GetPlateByID(ID2)	--index2 is the index of the plate containing tile ii -LL
 				if index2 == nil then
-					print("index2 is nil; ID2 at ("..xx..","..yy..") is:"..ID2)
+					print("index2 is nil; ID2 at ("..xx..","..yy..") is:"..ID2)	--Debug warning -LL
 				end
-				local Sx2 = Round(PlateMap.speed[index2]/100)
-				local Sy2 = PlateMap.speed[index2] - (Sx2*100)
+				local Sx2 = Round(PlateMap.speed[index2]/100)	--Decode velocity into x component ...
+				local Sy2 = PlateMap.speed[index2] - (Sx2*100)	--... and y component -LamilLerran
 				if ID1 ~= ID2 then
 					local Sx = Sx1 - Sx2
 					local Sy = Sy1 - Sy2
-					local S = math.sqrt(Sx^2+Sy^2)
-					if S > 5 then
-						local Nx = Sx/S
+					local S = math.sqrt(Sx^2+Sy^2)	--The relative speed of the two plates -LamilLerran
+					if S > 5 then	--When the relative speed of the plates is slow (<= 5), then their
+									--fault remains classified as a minor fault (type 1) -LL
+						local Nx = Sx/S		--Normalized x component of relative velocity -LamilLerran
 						local Ny = Sy/S
-						local Dx = xx - x
+						local Dx = xx - x	--x component of relative position of the two tiles -LL
 						local Dy = yy - y
-						local DS = math.sqrt(Dx^2+Dy^2)
-						local DNx = Dx/DS
+						local DS = math.sqrt(Dx^2+Dy^2)	--distance between the two tiles -LL
+						local DNx = Dx/DS	--Normalized x component of relative position -LL
 						local DNy = Dy/DS
-						local P = Nx*DNx+Ny*DNy
-						if P < -0.5 then
-							PlateMap.fault[i] = 4
-						elseif P > 0.5 then
-							PlateMap.fault[i] = 2
-						else
-							PlateMap.fault[i] = 3
+						local P = Nx*DNx+Ny*DNy	--Dot Product of <Nx,Ny> with <DNx,DNy>. This ranges
+												--from -1 to 1; it will be -1 if the tiles are moving
+												--directly apart, 1 if they are moving directly toward
+												--each other, and 0 if all motion is perpendicular to
+												--their relative positions. -LL
+						if P < -0.5 then	--Plates moving in opposite direction of their relative positions are convergent -LL
+							PlateMap.fault[i] = mc.CONVERGENTFAULT
+						elseif P > 0.5 then	--Plates moving in same direction as their relative positions are divergent -LL
+							PlateMap.fault[i] = mc.DIVERGENTFAULT
+						else				--Others move sideways so are transform -LL
+							PlateMap.fault[i] = mc.TRANSFORMFAULT
 						end
+						--print(string.format("Debug 0 -- Direction '%x'",dir))
 					end
 				end
 			end
 		end
 	end
+	
 	--PlateMap:Save3("PlateMap.fault.csv")
 end
 -------------------------------------------------------------------------------------------
@@ -3501,14 +3751,14 @@ function CreateContinentalShelf(W,H)
     for i = 1, #Plates do
         local index = GetPlateByID(Plates[i])
         local Zone = DetermineRiftZone(W,H,index,centerRift,1.0)
-        if contPercent >= mc.landPercent then
-            PlateMap.type[index] = 0
+        if contPercent >= mc.continentalPercent then
+            PlateMap.type[index] = mc.OCEANIC
         elseif Zone == 0 then
-            PlateMap.type[index] = 0
+            PlateMap.type[index] = mc.OCEANIC
         elseif H > 32 and Blockade(index,Plates[i],W,H) then
-            PlateMap.type[index] = 0
+            PlateMap.type[index] = mc.OCEANIC
         else
-            PlateMap.type[index] = 1
+            PlateMap.type[index] = mc.CONTINENTAL
             contSize = contSize + PlateMap.size[index]
             contCount = contCount+1
             lastPlate = Plates[i]
@@ -3518,22 +3768,22 @@ function CreateContinentalShelf(W,H)
     end
 
     -- Repeat the previous with a lowered RiftZone threshold if contPercent is significantly lower than our target
-    if contPercent / mc.landPercent < 0.95 then
+    if contPercent / mc.continentalPercent < 0.95 then
         --print(string.format("Twice!"))
         for i = 1, #Plates do
             local index = GetPlateByID(Plates[i])
             local Zone = DetermineRiftZone(W,H,index,centerRift,0.6)
             if PlateMap.type[index] == 0 then
-                if contPercent >= mc.landPercent then
-                    PlateMap.type[index] = 0
+                if contPercent >= mc.continentalPercent then
+                    PlateMap.type[index] = mc.OCEANIC
                 elseif Zone == 0 then
-                    PlateMap.type[index] = 0
+                    PlateMap.type[index] = mc.OCEANIC
                     --print(string.format("Rift Zone at plate %d", Plates[i]))
                 elseif H > 32 and Blockade(index,Plates[i],W,H) then
-                    PlateMap.type[index] = 0
+                    PlateMap.type[index] = mc.OCEANIC
                     --print(string.format("Blockade at plate %d", Plates[i]))
                 else
-                    PlateMap.type[index] = 1
+                    PlateMap.type[index] = mc.CONTINENTAL
                     contSize = contSize + PlateMap.size[index]
                     contCount = contCount+1
                     --print(string.format("Flipped plate %d.", Plates[i]))
@@ -3544,7 +3794,7 @@ function CreateContinentalShelf(W,H)
     end
 
     -- highestZone = 0
-    -- if contPercent / mc.landPercent > 1.03 then
+    -- if contPercent / mc.continentalPercent > 1.03 then
         -- for i = 1, #Plates do
             -- local index = GetPlateByID(Plates[i])
             -- if PlateMap.type[index] == 1 then
@@ -3558,13 +3808,13 @@ function CreateContinentalShelf(W,H)
         -- print(string.format("sinkPlate is %d, it's size is %d", sinkPlate, PlateMap.size[GetPlateByID(sinkPlate)]))
     -- end
 
-    if contPercent / mc.landPercent > 1.05 then
+    if contPercent / mc.continentalPercent > 1.05 then
 		local foundSink = false	-- True if a plate to sink has been found -LamilLerran
-        local nearest = contPercent - mc.landPercent
+        local nearest = contPercent - mc.continentalPercent
         for i = 1, #Plates do
             local index = GetPlateByID(Plates[i])
             if PlateMap.type[index] == 1 then
-                local target = contPercent - mc.landPercent
+                local target = contPercent - mc.continentalPercent
                 local size = PlateMap.size[index]/WH
                 if math.abs(size - target) < nearest then
                     nearest = math.abs(size - target)
@@ -3576,7 +3826,7 @@ function CreateContinentalShelf(W,H)
 		if foundSink then
 			local index = GetPlateByID(sinkPlate)
 			--print(string.format("index is %d, sinkPlate is %d, #Plates is %d", (index and index or -1), (sinkPlate and sinkPlate or -1),#Plates))
-			PlateMap.type[index] = 0
+			PlateMap.type[index] = mc.OCEANIC
 			contSize = contSize - PlateMap.size[index]
 			contPercent = contSize/WH
 			contCount = contCount - 1
@@ -3607,29 +3857,29 @@ function CreatePangealShelf(W,H)
     for i = 1, #Plates do
         local index = GetPlateByID(Plates[i])
         local Zone = DetermineRiftZone(W,H,index,centerRift,1.0)
-        if contPercent >= mc.landPercent then
-            PlateMap.type[index] = 0
+        if contPercent >= mc.continentalPercent then
+            PlateMap.type[index] = mc.OCEANIC
         elseif Zone == 0 then
-            PlateMap.type[index] = 0
+            PlateMap.type[index] = mc.OCEANIC
         elseif H > 32 and Blockade(index,Plates[i],W,H) then
-            PlateMap.type[index] = 0
+            PlateMap.type[index] = mc.OCEANIC
         else
             local landNeighbor = false
             for k = 1, #PlateMap.neighbors[index] do
-                if PlateMap.type[GetPlateByID(PlateMap.neighbors[index][k])] == 1 or first then
+                if PlateMap.type[GetPlateByID(PlateMap.neighbors[index][k])] == mc.PANGEAL or first then
                     landNeighbor = true
                     first = false
                     break
                 end
             end
             if landNeighbor then
-                PlateMap.type[index] = 1
+                PlateMap.type[index] = mc.CONTINENTAL
                 contSize = contSize + PlateMap.size[index]
                 contCount = contCount+1
                 lastPlate = Plates[i]
                 --print(string.format("Flipped plate %d.", Plates[i]))
             else
-                PlateMap.type[index] = 0
+                PlateMap.type[index] = mc.OCEANIC
             end
         end
         contPercent = contSize/WH
@@ -3642,31 +3892,31 @@ function CreatePangealShelf(W,H)
         for i = 1, #Plates do
             local index = GetPlateByID(Plates[i])
             local Zone = DetermineRiftZone(W,H,index,centerRift,(1-(loopCount/20)))
-            if PlateMap.type[index] == 0 then
-                if contPercent >= mc.landPercent then
-                    PlateMap.type[index] = 0
+            if PlateMap.type[index] == mc.OCEANIC then
+                if contPercent >= mc.continentalPercent then
+                    PlateMap.type[index] = mc.OCEANIC
                 elseif Zone == 0 then
-                    PlateMap.type[index] = 0
+                    PlateMap.type[index] = mc.OCEANIC
                     --print(string.format("Rift Zone at plate %d", Plates[i]))
                 elseif H > 32 and Blockade(index,Plates[i],W,H) then
-                    PlateMap.type[index] = 0
+                    PlateMap.type[index] = mc.OCEANIC
                     --print(string.format("Blockade at plate %d", Plates[i]))
                 else
                     local landNeighbor = false
                     for k = 1, #PlateMap.neighbors[index] do
-                        if PlateMap.type[GetPlateByID(PlateMap.neighbors[index][k])] == 1 then
+                        if PlateMap.type[GetPlateByID(PlateMap.neighbors[index][k])] == mc.PANGEAL then
                             landNeighbor = true
                         end
                     end
                     if landNeighbor then
-                        PlateMap.type[index] = 1
+                        PlateMap.type[index] = mc.PANGEAL
                         contSize = contSize + PlateMap.size[index]
                         contCount = contCount+1
                         lastPlate = Plates[i]
                         --print(string.format("Flipped plate %d.", Plates[i]))
                     else
                         --print(string.format("No landNeighbor found for plate %d", Plates[i]))
-                        PlateMap.type[index] = 0
+                        PlateMap.type[index] = mc.OCEANIC
                     end
                 end
                 contPercent = contSize/WH
@@ -3675,18 +3925,18 @@ function CreatePangealShelf(W,H)
         loopCount = loopCount + 1
     end
 
-    if contPercent / mc.landPercent > 1.05 then
-        local nearest = (contPercent - mc.landPercent) * 0.9
+    if contPercent / mc.continentalPercent > 1.05 then
+        local nearest = (contPercent - mc.continentalPercent) * 0.9
         for i = 1, #Plates do
             local index = GetPlateByID(Plates[i])
-            if PlateMap.type[index] == 1 then
+            if PlateMap.type[index] == mc.PANGEAL then
                 local landNeighborCount = 0
                 for k = 1, #PlateMap.neighbors[index] do
-                    if PlateMap.type[GetPlateByID(PlateMap.neighbors[index][k])] == 1 then
+                    if PlateMap.type[GetPlateByID(PlateMap.neighbors[index][k])] == mc.PANGEAL then
                         landNeighborCount = landNeighborCount + 1
                     end
                 end
-                local target = contPercent - mc.landPercent
+                local target = contPercent - mc.continentalPercent
                 local size = PlateMap.size[index]/WH
                 if math.abs(size - target) < nearest and landNeighborCount < 4 then
                     nearest = math.abs(size - target)
@@ -3696,7 +3946,7 @@ function CreatePangealShelf(W,H)
         end
         if not (sinkPlate == 0) then
             local index = GetPlateByID(sinkPlate)
-            PlateMap.type[index] = 0
+            PlateMap.type[index] = mc.OCEANIC
             contSize = contSize - PlateMap.size[index]
             contPercent = contSize/WH
             contCount = contCount - 1
@@ -3709,6 +3959,283 @@ function CreatePangealShelf(W,H)
 	print(string.format("%d plates flipped, in %d iterations, to make %.2f%% of the map pangeal shelf. - Planet Simulator", contCount, loopCount, contPercent * 100))
 end
 -------------------------------------------------------------------------------------------
+--TODO: New; still needs organization -LL
+function AdjacentContinentalTiles(x,y)
+	local returnSet = Set:New({})
+	local xx, yy, valid, ii, plateType
+	
+	--print("Debug 1.1")
+	
+	for dir,_ in pairs(mc.DIRECTIONS) do
+		--print("Debug 1.2")
+		xx, yy, valid = PlateMap:GetNeighbor(x,y,dir,true)
+		--print("Debug 1.3")
+		if valid then
+			--print("Debug 1.4")
+			ii = PlateMap:GetIndex(xx,yy)
+			--print("Debug 1.5")
+			plateType = PlateMap.type[GetPlateByID(PlateMap.ID[ii])]
+			--print("Debug 1.6")
+			if plateType == mc.CONTINENTAL or plateType == mc.PANGEAL then
+				--print("Debug 1.7")
+				returnSet:add(dir)
+				--print("Debug 1.8")
+			end
+			--print("Debug 1.9")
+		end
+	end
+	
+	--print("Debug 1.10")
+
+	return returnSet
+end
+
+--[[
+Since the central tile must be continental, there are 13 possibilities
+for how adjacent continental/oceanic tiles can be distributed (up to symmetry):
+0 land: (1 of 1 type)
+ W W
+W L W
+ W W
+1 land: (6 of 1 type)
+ W W
+W L L
+ W W
+2 land: (6, 6, and 3 of 3 types)
+ W W    W W    W W
+W L L  W L L  L L L
+ W L    L W    W W
+3 land: (6, 12, and 2 of 3 types)
+ W W    W W    L W
+W L L  L L L  W L L
+ L L    W L    L W
+4/5/6 land: opposite of 2/1/0 land, respectively
+]]
+function LiftAtContinentalConvergence(x,y)
+	--Note: Assumes everything in landDirs is a valid tile (i.e. lies on the map)
+	--print("Debug 1")
+	local landDirs = AdjacentContinentalTiles(x,y)
+	--print("Debug 2")
+	if not landDirs:contains(mc.C) then
+		print("Warning: LiftAtContinentalConvergence called on oceanic tile")
+	end
+	--[[do	--Debug
+		print("landDirs:length() ==", landDirs:length())
+		print("landDirs are:")
+		for dir,_ in pairs(landDirs) do
+			print(string.format("%x",dir))
+		end
+	end]]
+	if landDirs:length() == 1 then
+		print("Warning: Unexpected single-tile continent detected by LiftAtContinentalConvergence")
+		PlateMap.data[PlateMap:GetIndex(x,y)] = PlateMap.data[PlateMap:GetIndex(x,y)] * 1.05
+	elseif landDirs:length() == 2 then
+		PlateMap.data[PlateMap:GetIndex(x,y)] = PlateMap.data[PlateMap:GetIndex(x,y)] * 1.2
+		for dir, _ in pairs(landDirs) do
+			local xx, yy, index
+			xx, yy = PlateMap:GetNeighbor(x,y,dir)	
+			index = PlateMap:GetIndex(xx,yy)
+			PlateMap.data[index] = PlateMap.data[index] * 0.9
+		end
+	elseif landDirs:length() == 3 then
+		--Do Nothing TODO: Change?
+	elseif landDirs:length() == 4 then
+		landDirs:delete(mc.C)
+		for dir, _ in ipairs(landDirs) do
+			-- Only add elevation if all three land tiles are contiguous
+			if landDirs:contains(mc:GetClockwiseDir(dir)) and landDirs:contains(mc:GetCounterclockwiseDir(dir)) then
+				local xx = {}
+				local yy = {}
+				xx[1], yy[1] = PlateMap:GetNeighbor(x,y,dir)
+				xx[2], yy[2] = PlateMap:GetNeighbor(x,y,mc:GetClockwiseDir(dir))
+				xx[3], yy[3] = PlateMap:GetNeighbor(x,y,mc:GetCounterclockwiseDir(dir))
+				for i = 1, 3 do
+					local scalar = 1.05
+					if i == 1 then scalar = 1.3 end	--Raise the central land tile a moderate amount and the edge lands a tiny amount
+					local index = PlateMap:GetIndex(xx[i],yy[i])
+					PlateMap.data[index] = PlateMap.data[index] * scalar
+				end
+			end
+		end
+	elseif landDirs:length() == 5 then
+		local waterDirs = Set:New({})
+		--Every direction that isn't continental/pangeal plate is oceanic plate
+		--(Or off the map, which we count as oceanic)
+		for dir,_ in pairs(mc.DIRECTIONS) do
+			if not landDirs:contains(dir) then
+				waterDirs:add(dir)
+			end
+		end
+		
+		--Check the locations of the two water tiles
+		for dir,_ in pairs(waterDirs) do
+			if waterDirs:contains(mc:GetClockwiseDir(dir)) then
+				--They are adjacent; elevate the two inland land tiles
+				inlandDirCW = mc:GetCounterclockwiseDir(mc:GetCounterclockwiseDir(dir))
+				inlandDirCCW = mc:GetCounterclockwiseDir(inlandDirCW)
+				local xx, yy = PlateMap:GetNeighbor(x,y,inlandDirCW)
+				local index = PlateMap:GetIndex(xx,yy)
+				PlateMap.data[index] = PlateMap.data[index] * 1.5
+				xx, yy = PlateMap:GetNeighbor(x,y,inlandDirCCW)
+				index = PlateMap:GetIndex(xx,yy)
+				PlateMap.data[index] = PlateMap.data[index] * 1.5
+				return
+			elseif waterDirs:contains(mc:GetClockwiseDir(mc:GetClockwiseDir(dir))) then
+				--They are separated by a single land tile; elevate the one inland land tile
+				local lonelandDir = mc:GetClockwiseDir(dir)
+				local xx, yy = PlateMap:GetNeighbor(x,y,mc:GetOppositeDir(lonelandDir))
+				local index = PlateMap:GetIndex(xx,yy)
+				PlateMap.data[index] = PlateMap.data[index] * 1.4
+				return
+			elseif waterDirs:contains(mc:GetClockwiseDir(mc:GetClockwiseDir(mc:GetClockwiseDir(dir)))) then
+				--They are opposite; Do Nothing
+				return
+			end
+		end
+		print("Warning: Unexpected case in LiftAtContinentalConvergence with #landDirs == 5")
+		print("landDirs are:")
+		for dir,_ in pairs(landDirs) do
+			print(string.format("%x",dir))
+		end
+	elseif landDirs:length() == 6 then
+		local waterDir = nil
+		--The direction that isn't continental/pangeal plate is oceanic plate
+		--(Or off the map, which we count as oceanic)
+		for dir,_ in pairs(mc.DIRECTIONS) do
+			if not landDirs:contains(dir) then
+				waterDir = dir
+			end
+		end
+		if not waterDir then 
+			print("Warning: Unexpected number of directions")
+			print(string.format("#landDirs == %x", #landDirs))
+			print("landDirs are:")
+			for dir,_ in pairs(landDirs) do
+				print(string.format("%x",dir))
+			end
+		end
+		landmostDir = mc:GetOppositeDir(waterDir)
+		inlandDirCW = mc:GetClockwiseDir(landmostDir)
+		inlandDirCCW = mc:GetCounterclockwiseDir(landmostDir)
+		
+		--Raise the inland land
+		local xx, yy = PlateMap:GetNeighbor(x,y,landmostDir)
+		local landmostIndex = PlateMap:GetIndex(xx,yy)
+		xx, yy = PlateMap:GetNeighbor(x,y,inlandDirCW)
+		local CWIndex = PlateMap:GetIndex(xx,yy)
+		xx, yy = PlateMap:GetNeighbor(x,y,inlandDirCCW)
+		local CCWIndex = PlateMap:GetIndex(xx,yy)
+		PlateMap.data[landmostIndex] = PlateMap.data[landmostIndex] * 1.6
+		PlateMap.data[CWIndex] = PlateMap.data[CWIndex] * 1.4
+		PlateMap.data[CCWIndex] = PlateMap.data[CCWIndex] * 1.4
+		
+		--Also raise all land a tiny amount
+		for dir,_ in pairs(landDirs) do
+			xx, yy = PlateMap:GetNeighbor(x,y,dir)
+			local index = PlateMap:GetIndex(xx,yy)
+			PlateMap.data[index] = PlateMap.data[index] * 1.05
+		end
+	elseif landDirs:length() == 7 then
+		--Everything is land, so elevate all of it!
+		for dir, _ in pairs(landDirs) do
+			xx, yy = PlateMap:GetNeighbor(x,y,dir)
+			local index = PlateMap:GetIndex(xx,yy)
+			PlateMap.data[index] = PlateMap.data[index] * 1.8
+		end
+	else
+		print("Warning: Unexpected oceans in LiftAtContinentalConvergence")
+		print(string.format("landDirs:length() == %x",landDirs:length()))
+	end
+end
+-------------------------------------------------------------------------------------------
+--[[function OldGenerateElevations(W,H,xWrap,yWrap)
+	--This function takes all of the data we've generated up to this point and translates it into a crude elevation map.
+	local WH = W*H
+	local scalar = 4
+
+	local inputNoise = FloatMap:New(W,H,xWrap,yWrap)
+	inputNoise:GenerateNoise()
+	inputNoise:Normalize()
+	local inputNoise2 = FloatMap:New(W,H,xWrap,yWrap)
+	inputNoise2:GenerateNoise()
+	inputNoise2:Normalize()
+
+	PlateMap:GenerateNoise()
+	PlateMap:Normalize()
+
+    -- local landFactor = mc.continentalPercent/contPercent
+    local landFactor = contPercent/mc.continentalPercent
+	for i = 0, WH-1, 1 do
+		if GetPlateType(i) == mc.PANGEAL or GetPlateType(i) == mc.CONTINENTAL then
+			if PlateMap.fault[i] == mc.CONVERGENTFAULT then
+				PlateMap.data[i] = PlateMap.data[i] * 3 * (landFactor)^scalar
+				--PlateMap.data[i] = PlateMap.data[i] * 0.25 * (landFactor)^scalar
+			elseif PlateMap.fault[i] == mc.TRANSFORMFAULT then
+				PlateMap.data[i] = PlateMap.data[i] * 0.25 * (landFactor)^scalar
+				--PlateMap.data[i] = PlateMap.data[i] * 3 * (landFactor)^scalar
+			else	--Divergent, Minor, or No Fault -LL
+				PlateMap.data[i] = PlateMap.data[i] * 0.2 * (landFactor)^scalar
+			end
+
+            -- if PlateMap.ID[i] == sinkPlate and landFactor > 1.03 then
+                -- PlateMap.data[i] = PlateMap.data[i]/(landFactor^((100 * landFactor) - 100))
+                -- -- PlateMap.data[i] = PlateMap.data[i] / ((PlateMap.size[GetPlateByID(sinkPlate)]/WH) / (contPercent - mc.continentalPercent))
+            -- elseif PlateMap.ID[i] == sinkPlate and landFactor < 0.97 then
+                -- -- PlateMap.data[i] = PlateMap.data[i]*(landFactor^(100 - (100 * landFactor)))
+                -- PlateMap.data[i] = PlateMap.data[i] * ((landFactor - 1.0) / (PlateMap.size[GetPlateByID(sinkPlate)]/WH))
+            -- end
+		else							--This is an oceanic plate -LamilLerran
+			if PlateMap.fault[i] == mc.CONVERGENTFAULT then	--Populate faults with volcanos, which may create islands
+				local islandRand = PWRandInt(1,100)/100
+				if islandRand <= mc.oceanicVolcanoFrequency then
+					local old = PlateMap.data[i]
+					PlateMap.data[i] = PlateMap.data[i] * (0.05+(PWRandInt(1,2500)/10000)) * (1/landFactor)^scalar
+					if (mc.islandExpansionFactor ~= 0) then
+						--The adjustment size is what we got for the central tile being a "volcano" minus
+						--what we would have gotten if it weren't a volcano
+						local adjustment = PlateMap.data[i] - old * 0.0002
+						if adjustment > 0 then
+							local adjacentTiles = GetSpiral(i,1,1)
+							for n = 1, #adjacentTiles, 1 do
+								local j = adjacentTiles[n]
+								if j ~= -1 then	--i.e. skip if j is not on the map
+									PlateMap.data[j] = PlateMap.data[j] + mc.islandExpansionFactor * adjustment
+								end
+							end
+							local twoOutTiles = GetSpiral(i,2,2)
+							for n = 1, #twoOutTiles, 1 do
+								local j = twoOutTiles[n]
+								if j ~= -1 then	--i.e. skip if j is not on the map
+									PlateMap.data[j] = PlateMap.data[j] + mc.islandExpansionFactor * mc.islandExpansionFactor * adjustment
+								end
+							end
+						end
+					end
+				else
+					PlateMap.data[i] = PlateMap.data[i] * 0.0002
+				end
+			elseif PlateMap.fault[i] == mc.TRANSFORMFAULT then
+				PlateMap.data[i] = PlateMap.data[i] * 0.00005
+			else	--Divergent, Minor, or No Fault -LL
+				PlateMap.data[i] = PlateMap.data[i] * 0.00005
+			end
+		end
+	end
+
+	PlateMap:Normalize()
+
+	for i = 0, WH-1, 1 do
+		local x = i%W
+		local y = (i-x)/W
+		local val = PlateMap.data[i]
+		PlateMap.data[i] = (math.sin(val*math.pi*2-math.pi*0.5)*0.5+0.5)
+		PlateMap.data[i] = PlateMap.data[i] * GetAttenuationFactor(PlateMap,x,y)
+	end
+	PlateMap:Normalize()
+
+	--PlateMap:Save4("PlateMap.data.csv")
+end]]
+
 function GenerateElevations(W,H,xWrap,yWrap)
 	--This function takes all of the data we've generated up to this point and translates it into a crude elevation map.
 	local WH = W*H
@@ -3724,36 +4251,69 @@ function GenerateElevations(W,H,xWrap,yWrap)
 	PlateMap:GenerateNoise()
 	PlateMap:Normalize()
 
-    -- local landFactor = mc.landPercent/contPercent
-    local landFactor = contPercent/mc.landPercent
+    -- local landFactor = mc.continentalPercent/contPercent
+    local landFactor = contPercent/mc.continentalPercent
 	for i = 0, WH-1, 1 do
-		if GetPlateType(i) == 1 then
-			if PlateMap.fault[i] == 4 then
-				PlateMap.data[i] = PlateMap.data[i] * 3 * (landFactor)^scalar
-			elseif PlateMap.fault[i] == 3 then
+		if GetPlateType(i) == mc.PANGEAL or GetPlateType(i) == mc.CONTINENTAL then
+			if PlateMap.fault[i] == mc.CONVERGENTFAULT then
+				--PlateMap.data[i] = PlateMap.data[i] * 3 * (landFactor)^scalar
+				PlateMap.data[i] = PlateMap.data[i] * .3 * (landFactor)^scalar
+				LiftAtContinentalConvergence(PlateMap:GetXYFromIndex(i))
+			elseif PlateMap.fault[i] == mc.TRANSFORMFAULT then
 				PlateMap.data[i] = PlateMap.data[i] * 0.25 * (landFactor)^scalar
-			else
+			else	--Divergent, Minor, or No Fault -LL
 				PlateMap.data[i] = PlateMap.data[i] * 0.2 * (landFactor)^scalar
 			end
 
             -- if PlateMap.ID[i] == sinkPlate and landFactor > 1.03 then
                 -- PlateMap.data[i] = PlateMap.data[i]/(landFactor^((100 * landFactor) - 100))
-                -- -- PlateMap.data[i] = PlateMap.data[i] / ((PlateMap.size[GetPlateByID(sinkPlate)]/WH) / (contPercent - mc.landPercent))
+                -- -- PlateMap.data[i] = PlateMap.data[i] / ((PlateMap.size[GetPlateByID(sinkPlate)]/WH) / (contPercent - mc.continentalPercent))
             -- elseif PlateMap.ID[i] == sinkPlate and landFactor < 0.97 then
                 -- -- PlateMap.data[i] = PlateMap.data[i]*(landFactor^(100 - (100 * landFactor)))
                 -- PlateMap.data[i] = PlateMap.data[i] * ((landFactor - 1.0) / (PlateMap.size[GetPlateByID(sinkPlate)]/WH))
             -- end
-		else
-			if PlateMap.fault[i] == 4 then
-				local islandRand = PWRandInt(1,100)/100
-				if islandRand <= 0.20 then
+		else							--This is an oceanic plate -LamilLerran
+			local hotspotRand = PWRand()
+			if (PlateMap.fault[i] == mc.CONVERGENTFAULT or hotspotRand < mc.hotspotFrequency) then
+				--Populate faults and hotspots with volcanos, which may create islands
+				local islandRand = PWRand()
+				if islandRand <= mc.oceanicVolcanoFrequency then
+					local old = PlateMap.data[i]
 					PlateMap.data[i] = PlateMap.data[i] * (0.05+(PWRandInt(1,2500)/10000)) * (1/landFactor)^scalar
+					if (mc.islandExpansionFactor ~= 0) then
+						--The adjustment size is what we got for the central tile being a "volcano" minus
+						--what we would have gotten if it weren't a volcano
+						local adjustment = PlateMap.data[i] - old * 0.0002
+						if adjustment > 0 then
+							local adjacentTiles = GetSpiral(i,1,1)
+							for n = 1, #adjacentTiles, 1 do
+								local j = adjacentTiles[n]
+								if j ~= -1 then	--i.e. skip if j is not on the map
+									PlateMap.data[j] = PlateMap.data[j] + mc.islandExpansionFactor * adjustment
+								end
+							end
+							local twoOutTiles = GetSpiral(i,2,2)
+							for n = 1, #twoOutTiles, 1 do
+								local j = twoOutTiles[n]
+								if j ~= -1 then	--i.e. skip if j is not on the map
+									PlateMap.data[j] = PlateMap.data[j] + mc.islandExpansionFactor * mc.islandExpansionFactor * adjustment
+								end
+							end
+							local threeOutTiles = GetSpiral(i,3,3)
+							for n = 1, #threeOutTiles, 1 do
+								local j = threeOutTiles[n]
+								if j ~= -1 then	--i.e. skip if j is not on the map
+									PlateMap.data[j] = PlateMap.data[j] + mc.islandExpansionFactor * mc.islandExpansionFactor * mc.islandExpansionFactor * adjustment
+								end
+							end
+						end
+					end
 				else
 					PlateMap.data[i] = PlateMap.data[i] * 0.0002
 				end
-			elseif PlateMap.fault[i] == 3 then
+			elseif PlateMap.fault[i] == mc.TRANSFORMFAULT then
 				PlateMap.data[i] = PlateMap.data[i] * 0.00005
-			else
+			else	--Divergent, Minor, or No Fault -LL
 				PlateMap.data[i] = PlateMap.data[i] * 0.00005
 			end
 		end
@@ -3772,7 +4332,6 @@ function GenerateElevations(W,H,xWrap,yWrap)
 
 	--PlateMap:Save4("PlateMap.data.csv")
 end
-
 -------------------------------------------------------------------------------------------
 function GetPlateByID(ID)
 	for i = 1, #PlateMap.index do
@@ -3789,11 +4348,7 @@ end
 function GetPlateType(k)
 	local ID = PlateMap.ID[k]
 	local index = GetPlateByID(ID)
-	if PlateMap.type[index] == 1 then
-		return 1
-	else
-		return 0
-	end
+	return PlateMap.type[index]
 end
 -------------------------------------------------------------------------------------------
 function SimulateTectonics(W,H,xWrap,yWrap)
@@ -3874,88 +4429,6 @@ function ShuffleList2(list)
 		list[i], list[k] = list[k], list[i]
 	end
 end
--------------------------------------------------------------------------------------------
---[[function GenerateMountainMap(width,height,xWrap,yWrap,initFreq)
-	local inputNoise = FloatMap:New(width,height,xWrap,yWrap)
-	inputNoise:GenerateBinaryNoise()
-	inputNoise:Normalize()
-	local inputNoise2 = FloatMap:New(width,height,xWrap,yWrap)
-	inputNoise2:GenerateNoise()
-	inputNoise2:Normalize()
-
-	local mountainMap = FloatMap:New(width,height,xWrap,yWrap)
-	local stdDevMap = FloatMap:New(width,height,xWrap,yWrap)
-	local noiseMap = FloatMap:New(width,height,xWrap,yWrap)
-	local i = 0
-	for y = 0, mountainMap.height - 1,1 do
-		for x = 0,mountainMap.width - 1,1 do
-			local odd = y % 2
-			local xx = x + odd * 0.5
-			mountainMap.data[i] = GetPerlinNoise(xx,y * mc.YtoXRatio,mountainMap.width,mountainMap.height * mc.YtoXRatio,initFreq,1.0,0.4,8,inputNoise)
-			noiseMap.data[i] = GetPerlinNoise(xx,y * mc.YtoXRatio,mountainMap.width,mountainMap.height * mc.YtoXRatio,initFreq,1.0,0.4,8,inputNoise2)
-			stdDevMap.data[i] = mountainMap.data[i]
-			i=i+1
-		end
-	end
-	mountainMap:Normalize()
-	stdDevMap:Deviate(7)
-	stdDevMap:Normalize()
-	--stdDevMap:Save("stdDevMap.csv")
-	--mountainMap:Save("mountainCloud.csv")
-	noiseMap:Normalize()
-	--noiseMap:Save("noiseMap.csv")
-
-	local moundMap = FloatMap:New(width,height,xWrap,yWrap)
-	i = 0
-	for y = 0, mountainMap.height - 1,1 do
-		for x = 0,mountainMap.width - 1,1 do
-			local val = mountainMap.data[i]
-			moundMap.data[i] = (math.sin(val*math.pi*2-math.pi*0.5)*0.5+0.5) * GetAttenuationFactor(mountainMap,x,y)
-			if val < 0.5 then
-				val = val^1 * 4
-			else
-				val = (1 - val)^1 * 4
-			end
-			--mountainMap.data[i] = val
-			mountainMap.data[i] = moundMap.data[i]
-			i=i+1
-		end
-	end
-	mountainMap:Normalize()
-	--mountainMap:Save("premountMap.csv")
-	--moundMap:Save("moundMap.csv")
-	i = 0
-	for y = 0, mountainMap.height - 1,1 do
-		for x = 0,mountainMap.width - 1,1 do
-			local val = mountainMap.data[i]
-			--mountainMap.data[i] = (math.sin(val * 2 * math.pi + math.pi * 0.5)^8 * val) + moundMap.data[i] * 2 + noiseMap.data[i] * 0.6
-			mountainMap.data[i] = (math.sin(val * 3 * math.pi + math.pi * 0.5)^16 * val)^0.5
-			if mountainMap.data[i] > 0.2 then
-				mountainMap.data[i] = 1.0
-			else
-				mountainMap.data[i] = 0.0
-			end
-			i=i+1
-		end
-	end
-	--mountainMap:Save("premountMap.csv")
-
-	local stdDevThreshold = stdDevMap:FindThresholdFromPercent(mc.landPercent,true,false)
-	i=0
-	for y = 0, mountainMap.height - 1,1 do
-		for x = 0,mountainMap.width - 1,1 do
-			local val = mountainMap.data[i]
-			local dev = 2.0 * stdDevMap.data[i] - 2.0 * stdDevThreshold
-			--mountainMap.data[i] = (math.sin(val * 2 * math.pi + math.pi * 0.5)^8 * val) + moundMap.data[i] * 2 + noiseMap.data[i] * 0.6
-			mountainMap.data[i] = (val + moundMap.data[i]) * dev
-			i=i+1
-		end
-	end
-
-	mountainMap:Normalize()
-	--mountainMap:Save("mountainMap.csv")
-	return mountainMap
-end]]
 -------------------------------------------------------------------------------------------
 function waterMatch(x,y)
 	if elevationMap:IsBelowSeaLevel(x,y) then
@@ -4828,6 +5301,7 @@ function GeneratePlotTypes()
 
 	GenerateCoasts({expansion_diceroll_table = mc.coastExpansionChance});
 
+	--TODO: Option to not remove ocean tiles from polar "inland" seas
 	--removes "ocean" tiles from inland seas
 	for n=1, #PlateMap.index, 1 do
 		if PlateMap.type[n] == 0 then
@@ -4958,7 +5432,7 @@ function AddLakes()
 	local flowNone	= FlowDirectionTypes.NO_FLOWDIRECTION
 	local WOfRiver, NWOfRiver, NEOfRiver = nil
 	local numLakes	= 0
-	local LakeUntil	= H/8
+	local LakeUntil	= H * mc.lakeFactor/8
 
 	local iters = 0
 	while numLakes < LakeUntil do
