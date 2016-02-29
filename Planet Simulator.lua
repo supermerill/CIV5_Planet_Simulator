@@ -1,7 +1,7 @@
 --------------------------------------------------------------------------------
 --Planet Simulator by Bobert13
 --Based on: PerfectWorld3.lua map script (c)2010 Rich Marinaccio
---version LL2beta
+--version LL2
 --------------------------------------------------------------------------------
 --This map script uses simulated plate tectonics to create landforms, and generates
 --climate based on a simplified model of geostrophic and monsoon wind patterns.
@@ -9,7 +9,12 @@
 --used to create the landforms.
 --
 --Version History
---LL2beta- Changed mountain generation to emphasize inland mountains along convergent
+--LL2	- Prevented "inland" seas from generating when one of the boundaries is an
+--		  ice cap. This also slightly reduces the rate of continents going into the ice caps
+--		- Added additional failsafe elevation generation when very few mountains are generated
+--		  along faults. This avoids the low-desert high-tundra maps that form when there is
+--		  little elevation variation.
+--LL2beta-Changed mountain generation to emphasize inland mountains along convergent
 --		  faults. This moves mountains away from the coasts and causes most mountains
 --		  to form in long ranges.
 --		- Added "Islands" option for generation of different numbers and types of islands
@@ -77,6 +82,7 @@ function MapConstants:New()
 	-------------------------------------------------------------------------------------------
 	--Terrain type constants
 	-------------------------------------------------------------------------------------------
+	mconst.plateSpeedHeightScalarRange = 0.3 --this constant affects how much plate speed affects continental plate height. Slower plates tend to be higher as they've lost their momentum due to upward redirection. TODO: Implement
 	--(Moved)mconst.desertPercent = 0.25		--Now in InitializeRainfall()
 	--(Moved)mconst.desertMinTemperature = 0.35 --Now in InitializeTemperature()
 	--(Moved)mconst.plainsPercent = 0.50 	--Now in InitializeRainfall()
@@ -115,12 +121,12 @@ function MapConstants:New()
 	-------------------------------------------------------------------------------------------
 	--Weather constants
 	-------------------------------------------------------------------------------------------
-	--Important latitude markers used for generating climate.
+	--Important latitude markers used for generating climate. (TODO: Consider switching to BE script values)
 	mconst.polarFrontLatitude = 65
 	mconst.tropicLatitudes = 23
 	mconst.horseLatitudes = 31
 	mconst.topLatitude = 70
-	mconst.bottomLatitude = -70
+	mconst.bottomLatitude = -mconst.topLatitude
 
 	--These set the water temperature compression that creates the land/sea seasonal temperature differences that cause monsoon winds.
 	mconst.minWaterTemp = 0.10
@@ -133,7 +139,7 @@ function MapConstants:New()
 	--Crazy rain tweaking variables. I wouldn't touch these if I were you.
 	mconst.minimumRainCost = 0.0001
 	mconst.upLiftExponent = 4
-	mconst.polarRainBoost = 0.00
+	mconst.polarRainBoost = 0.00	--TODO: Consider adjusting this and next to BE script values
 	mconst.pressureNorm = 0.90 --[1.0 = no normalization] Helps to prevent exaggerated Jungle/Marsh banding on the equator. -Bobert13
 
     -------------------------------------------------------------------------------------------
@@ -173,6 +179,18 @@ function MapConstants:New()
 	mconst.SE = 5
 	mconst.SW = 6
 	mconst.DIRECTIONS = Set:New({mconst.C, mconst.W, mconst.NW, mconst.NE, mconst.E, mconst.SE, mconst.SW})
+	
+	--relative directions
+	mconst.CENTER = 0
+	mconst.LONE = 1
+	mconst.SHORE = 2
+	mconst.INTERMEDIATE = 3
+	mconst.INLAND = 4
+	
+	--land patterns
+	mconst.CONTIGUOUS = 1
+	mconst.BALANCED = 2
+	mconst.UNBALANCED = 3
 
 	--flow directions
 	mconst.NOFLOW = 0
@@ -200,10 +218,12 @@ function MapConstants:New()
 	mconst.DIVERGENTFAULT = 2
 	mconst.TRANSFORMFAULT = 3
 	mconst.CONVERGENTFAULT = 4
+	mconst.FALLBACKFAULT = 5	--Not a true fault, used where a fake fault is needed
 
 	mconst.MultiPlayer = Game:IsNetworkMultiPlayer()
 
-	mconst:InitializeWorldAge()	
+	mconst:InitializeUpliftCoefficients()
+	mconst:InitializeWorldAge()
 	mconst:InitializeTemperature()
 	mconst:InitializeRainfall()
 	mconst:InitializeCoasts()
@@ -211,6 +231,233 @@ function MapConstants:New()
 	mconst:InitializeLakes()
 	mconst:InitializeIslands()
 	return mconst
+end
+-------------------------------------------------------------------------------------------
+function MapConstants:InitializeUpliftCoefficients()
+	--TODO: Add options for these
+	self.uplift = {}
+	
+	self.uplift[1] = {}
+	self.uplift[1].center = {}
+	self.uplift[1].center[self.CONVERGENTFAULT] = 1.05
+	
+	self.uplift[2] = {}
+	self.uplift[2].center = {}
+	self.uplift[2].center[self.CONVERGENTFAULT] = 1.2
+	self.uplift[2].lone = {}
+	self.uplift[2].lone[self.CONVERGENTFAULT] = 0.9
+	
+	self.uplift[3] = {}
+	self.uplift[3].contiguous = {}
+	self.uplift[3].contiguous.center = {}
+	self.uplift[3].contiguous.center[self.CONVERGENTFAULT] = 1
+	self.uplift[3].contiguous.shore = {}
+	self.uplift[3].contiguous.shore[self.CONVERGENTFAULT] = 1
+	self.uplift[3].unbalanced = {}
+	self.uplift[3].unbalanced.center = {}
+	self.uplift[3].unbalanced.center[self.CONVERGENTFAULT] = 1
+	self.uplift[3].unbalanced.lone = {}
+	self.uplift[3].unbalanced.lone[self.CONVERGENTFAULT] = 1
+	self.uplift[3].balanced = {}
+	self.uplift[3].balanced.center = {}
+	self.uplift[3].balanced.center[self.CONVERGENTFAULT] = 1
+	self.uplift[3].balanced.lone = {}
+	self.uplift[3].balanced.lone[self.CONVERGENTFAULT] = 1
+	
+	self.uplift[4] = {}
+	self.uplift[4].contiguous = {}
+	self.uplift[4].contiguous.center = {}
+	self.uplift[4].contiguous.center[self.CONVERGENTFAULT] = 1
+	self.uplift[4].contiguous.shore = {}
+	self.uplift[4].contiguous.shore[self.CONVERGENTFAULT] = 1.3
+	self.uplift[4].contiguous.inland = {}
+	self.uplift[4].contiguous.inland[self.CONVERGENTFAULT] = 1.05
+	self.uplift[4].unbalanced = {}
+	self.uplift[4].unbalanced.center = {}
+	self.uplift[4].unbalanced.center[self.CONVERGENTFAULT] = 1
+	self.uplift[4].unbalanced.lone = {}
+	self.uplift[4].unbalanced.lone[self.CONVERGENTFAULT] = 1
+	self.uplift[4].unbalanced.shore = {}
+	self.uplift[4].unbalanced.shore[self.CONVERGENTFAULT] = 1
+	self.uplift[4].balanced = {}
+	self.uplift[4].balanced.center = {}
+	self.uplift[4].balanced.center[self.CONVERGENTFAULT] = 1
+	self.uplift[4].balanced.lone = {}
+	self.uplift[4].balanced.lone[self.CONVERGENTFAULT] = 1
+	
+	self.uplift[5] = {}
+	self.uplift[5].contiguous = {}
+	self.uplift[5].contiguous.center = {}
+	self.uplift[5].contiguous.center[self.CONVERGENTFAULT] = 1
+	self.uplift[5].contiguous.shore = {}
+	self.uplift[5].contiguous.shore[self.CONVERGENTFAULT] = 1
+	self.uplift[5].contiguous.inland = {}
+	self.uplift[5].contiguous.inland[self.CONVERGENTFAULT] = 1.5
+	self.uplift[5].unbalanced = {}
+	self.uplift[5].unbalanced.center = {}
+	self.uplift[5].unbalanced.center[self.CONVERGENTFAULT] = 1
+	self.uplift[5].unbalanced.lone = {}
+	self.uplift[5].unbalanced.lone[self.CONVERGENTFAULT] = 1
+	self.uplift[5].unbalanced.shore = {}
+	self.uplift[5].unbalanced.shore[self.CONVERGENTFAULT] = 1
+	self.uplift[5].unbalanced.inland = {}
+	self.uplift[5].unbalanced.inland[self.CONVERGENTFAULT] = 1.4
+	self.uplift[5].balanced = {}
+	self.uplift[5].balanced.center = {}
+	self.uplift[5].balanced.center[self.CONVERGENTFAULT] = 1
+	self.uplift[5].balanced.shore = {}
+	self.uplift[5].balanced.shore[self.CONVERGENTFAULT] = 1
+	
+	self.uplift[6] = {}
+	self.uplift[6].center = {}
+	self.uplift[6].center[self.CONVERGENTFAULT] = 1.05
+	self.uplift[6].shore = {}
+	self.uplift[6].shore[self.CONVERGENTFAULT] = 1.05
+	self.uplift[6].intermediate = {}
+	self.uplift[6].intermediate[self.CONVERGENTFAULT] = 1.47
+	self.uplift[6].inland = {}
+	self.uplift[6].inland[self.CONVERGENTFAULT] = 1.68
+	
+	self.uplift[7] = {}
+	self.uplift[7].center = {}
+	self.uplift[7].center[self.CONVERGENTFAULT] = 1.8
+	self.uplift[7].center[self.FALLBACKFAULT] = 4
+	self.uplift[7].inland = {}
+	self.uplift[7].inland[self.CONVERGENTFAULT] = 1.8
+	self.uplift[7].inland[self.FALLBACKFAULT] = 2
+end
+-------------------------------------------------------------------------------------------
+function MapConstants:GetUpliftCoeff(faultType, landCount, pattern, position)
+	if landCount == 1 then
+		if position ~= self.CENTER then
+			print(string.format("Warning: Unexpected position %i with landCount 1", position))
+		end
+		return self.uplift[1].center[faultType] or 1
+	elseif landCount == 2 then
+		if position == self.CENTER then
+			return self.uplift[2].center[faultType] or 1
+		elseif position == self.LONE then
+			return self.uplift[2].lone[faultType] or 1
+		else
+			print(string.format("Warning: Unexpected position %i with landCount 2", position))
+		end
+	elseif landCount == 3 then
+		if pattern == self.CONTIGUOUS then
+			if position == self.CENTER then
+				return self.uplift[3].contiguous.center[faultType] or 1
+			elseif position == self.SHORE then
+				return self.uplift[3].contiguous.shore[faultType] or 1
+			else
+				print(string.format("Warning: Unexpected position %i with landCount 3 and pattern Contiguous",position))
+			end
+		elseif pattern == self.UNBALANCED then
+			if position == self.CENTER then
+				return self.uplift[3].unbalanced.center[faultType] or 1
+			elseif position == self.LONE then
+				return self.uplift[3].unbalanced.lone[faultType] or 1
+			else
+				print(string.format("Warning: Unexpected position %i with landCount 3 and pattern Unbalanced",position))
+			end			
+		elseif pattern == self.BALANCED then
+			if position == self.CENTER then
+				return self.uplift[3].balanced.center[faultType] or 1
+			elseif position == self.LONE then
+				return self.uplift[3].balanced.lone[faultType] or 1
+			else
+				print(string.format("Warning: Unexpected position %i with landCount 3 and pattern Balanced",position))
+			end			
+		else
+			print(string.format("Warning: Unexpected pattern %i with landCount 3", pattern))
+		end
+	elseif landCount == 4 then
+		if pattern == self.CONTIGUOUS then
+			if position == self.CENTER then
+				return self.uplift[4].contiguous.center[faultType] or 1
+			elseif position == self.SHORE then
+				return self.uplift[4].contiguous.shore[faultType] or 1
+			elseif position == self.INLAND then
+				return self.uplift[4].contiguous.inland[faultType] or 1
+			else
+				print(string.format("Warning: Unexpected position %i with landCount 4 and pattern Contiguous",position))
+			end
+		elseif pattern == self.UNBALANCED then
+			if position == self.CENTER then
+				return self.uplift[4].unbalanced.center[faultType] or 1
+			elseif position == self.LONE then
+				return self.uplift[4].unbalanced.lone[faultType] or 1
+			elseif position == self.SHORE then
+				return self.uplift[4].unbalanced.shore[faultType] or 1
+			else
+				print(string.format("Warning: Unexpected position %i with landCount 4 and pattern Unbalanced",position))
+			end			
+		elseif pattern == self.BALANCED then
+			if position == self.CENTER then
+				return self.uplift[4].balanced.center[faultType] or 1
+			elseif position == self.LONE then
+				return self.uplift[4].balanced.lone[faultType] or 1
+			else
+				print(string.format("Warning: Unexpected position %i with landCount 4 and pattern Balanced",position))
+			end			
+		else
+			print(string.format("Warning: Unexpected pattern %i with landCount 4", pattern))
+		end
+	elseif landCount == 5 then
+		if pattern == self.CONTIGUOUS then
+			if position == self.CENTER then
+				return self.uplift[5].contiguous.center[faultType] or 1
+			elseif position == self.SHORE then
+				return self.uplift[5].contiguous.shore[faultType] or 1
+			elseif position == self.INLAND then
+				return self.uplift[5].contiguous.inland[faultType] or 1
+			else
+				print(string.format("Warning: Unexpected position %i with landCount 5 and pattern Contiguous",position))
+			end
+		elseif pattern == self.UNBALANCED then
+			if position == self.CENTER then
+				return self.uplift[5].unbalanced.center[faultType] or 1
+			elseif position == self.LONE then
+				return self.uplift[5].unbalanced.lone[faultType] or 1
+			elseif position == self.SHORE then
+				return self.uplift[5].unbalanced.shore[faultType] or 1
+			elseif position == self.INLAND then
+				return self.uplift[5].unbalanced.inland[faultType] or 1
+			else
+				print(string.format("Warning: Unexpected position %i with landCount 5 and pattern Unbalanced",position))
+			end			
+		elseif pattern == self.BALANCED then
+			if position == self.CENTER then
+				return self.uplift[5].balanced.center[faultType] or 1
+			elseif position == self.SHORE then
+				return self.uplift[5].balanced.shore[faultType] or 1
+			else
+				print(string.format("Warning: Unexpected position %i with landCount 5 and pattern Balanced",position))
+			end			
+		else
+			print(string.format("Warning: Unexpected pattern %i with landCount 5", pattern))
+		end
+	elseif landCount == 6 then
+		if position == self.CENTER then
+			return self.uplift[6].center[faultType] or 1
+		elseif position == self.SHORE then
+			return self.uplift[6].shore[faultType] or 1
+		elseif position == self.INTERMEDIATE then
+			return self.uplift[6].intermediate[faultType] or 1
+		elseif position == self.INLAND then
+			return self.uplift[6].inland[faultType] or 1
+		else
+			print(string.format("Warning: Unexpected position %i with landCount 6", position))
+		end
+	elseif landCount == 7 then
+		if position == self.CENTER then
+			return self.uplift[7].center[faultType] or 1
+		elseif position == self.INLAND then
+			return self.uplift[7].inland[faultType] or 1
+		else
+			print(string.format("Warning: Unexpected position %i with landCount 7", position))
+		end
+	else
+		print(string.format("Warning: Unexpected landCount of %i", landCount))
+	end
 end
 -------------------------------------------------------------------------------------------
 function MapConstants:InitializeWorldAge()
@@ -376,15 +623,6 @@ function MapConstants:InitializeCoasts()
 	end
 end
 -------------------------------------------------------------------------------------------
-function MapConstants:NormalizeLatitudeForArea()
-	--This function is not complete. Do not call it; it will crash -LamilLerran
-	if Map.GetCustomOption(TODO) == TODO then
-		--TODO
-	else
-		-- Do Nothing
-	end
-end
--------------------------------------------------------------------------------------------
 function MapConstants:InitializeLakes()
 	self.lakeFactor = 1
 	--TODO: Make this actually do something useful
@@ -405,7 +643,7 @@ function MapConstants:InitializeLakes()
 end
 -------------------------------------------------------------------------------------------
 function MapConstants:InitializeIslands()
-	--Warning: could use some fine tuning, especially for island expansion -LamilLerran
+	--TODO: could use some fine tuning, especially for island expansion -LamilLerran
 	local isles = Map.GetCustomOption(9)
 	if isles == 6 then
 		isles = 1 + Map.Rand(5, "Random Oceanic Islands Option - Planet Simulator");
@@ -583,6 +821,7 @@ function GetMapInitData(worldSize)
 		[GameInfo.Worlds.WORLDSIZE_LARGE.ID] = {104, 64},
 		[GameInfo.Worlds.WORLDSIZE_HUGE.ID] = {128, 80}
 		}
+	--TODO: Re-enable?
 	--if Map.GetCustomOption(6) == 2 then
 		-- Enlarge terra-style maps to create expansion room on the new world
 		--worldsizes = {
@@ -606,6 +845,7 @@ function GetMapInitData(worldSize)
     end
 end
 -------------------------------------------------------------------------------------------
+--TODO: Can remove from here?
 -- bob Class finite precision math
 --
 -- tobob expects a floating point number
@@ -1163,6 +1403,7 @@ function powbob(bob, pow)
 
     return retbob
 end
+--TODO:Can remove to here?
 -------------------------------------------------------------------------------------------
 function Round(n)
 	if n > 0 then
@@ -1179,6 +1420,7 @@ function Round(n)
 		end
 	end
 end
+--TODO: Can remove from here?
 -----------------------------------------------------------------------------
 --Interpolation and Perlin functions
 -----------------------------------------------------------------------------
@@ -1358,6 +1600,7 @@ end
 function Pop(a)
 	return table.remove(a)
 end
+--TODO: Can remove to here?
 ------------------------------------------------------------------------
 --inheritance mechanism from http://www.gamedev.net/community/forums/topic.asp?topic_id=561909
 ------------------------------------------------------------------------
@@ -1461,11 +1704,7 @@ end
 -- Set class
 -- Implements a set (unsorted collection without duplicates)
 -------------------------------------------------------------------------------------------
---Set = inheritsFrom(nil)
---TODO: Re-standardize Set class construction
-Set = {}
-
-Set.mt = {__index = Set, __len = Set.length}
+Set = inheritsFrom(nil)
 
 function Set.length(set)
 	local length = 0
@@ -1476,16 +1715,8 @@ function Set.length(set)
 end
 
 function Set:New(elementsList)
-	--local new_inst = {}
-	--setmetatable(new_inst, {__index = Set});	--setup metatable
-	
-	--local new_inst = Set:create()
-	--local mt = getmetatable(new_inst)
-	--mt.__len = Set.length
-	--setmetatable(new_inst,mt)
-	
 	local new_inst = {}
-	setmetatable(new_inst, Set.mt)
+	setmetatable(new_inst, {__index = Set});	--setup metatable
 	
 	for _, element in pairs(elementsList) do
 		new_inst[element] = true
@@ -2459,10 +2690,11 @@ function FloatMap:Save3(name)
 	print("bitmap saved as "..name..".")
 end
 -------------------------------------------------------------------------------------------
-function FloatMap:Save4(name)
+function FloatMap:Save4(name,precision)
 	local file = io.open(name,"w+")
 	local first = true
 	local str = ""
+	local decimalPlaces = precision or 1
 	for y = self.height, 0, -1 do
 		if first then
 			str = "xy,"
@@ -2478,9 +2710,9 @@ function FloatMap:Save4(name)
 					str = str..string.format("%d\n",x)
 				end
 			elseif x < self.width-1 then
-				str = str..string.format("%.1f,",self.data[i])
+				str = str..string.format("%."..decimalPlaces.."f,",self.data[i])
 			else
-				str = str..string.format("%.1f\n",self.data[i])
+				str = str..string.format("%."..decimalPlaces.."f\n",self.data[i])
 			end
 		end
 		first = false
@@ -2936,7 +3168,7 @@ function RiverMap:isLake(junction)
 	--first exclude the map edges that don't have neighbors
 	if junction.y == 0 and junction.isNorth == false then
 		return false
-	elseif junction.y == elevationMap.height - 1 and junction.isNorth == true then
+	elseif junction.y == elevationMap.height - 1 and junction.isSouth == true then	--pretty sure this is right (changed from junction.isNorth) -L
 		return false
 	end
 
@@ -2951,7 +3183,7 @@ function RiverMap:isLake(junction)
 	local vertAltitude = nil
 	if vertNeighbor == nil then
 		vertAltitude = junction.altitude
-		--print("--vertNeighbor == nil")
+		print("Warning: vertNeighbor == nil in RiverMap:isLake")
 	else
 		vertAltitude = vertNeighbor.altitude
 		--print(string.format("--vertNeighbor = (%d,%d) N = %s, alt = %f",vertNeighbor.x,vertNeighbor.y,tostring(vertNeighbor.isNorth),vertNeighbor.altitude))
@@ -2961,7 +3193,7 @@ function RiverMap:isLake(junction)
 	local westAltitude = nil
 	if westNeighbor == nil then
 		westAltitude = junction.altitude
-		--print("--westNeighbor == nil")
+		print("Warning: westNeighbor == nil in RiverMap:isLake")
 	else
 		westAltitude = westNeighbor.altitude
 		--print(string.format("--westNeighbor = (%d,%d) N = %s, alt = %f",westNeighbor.x,westNeighbor.y,tostring(westNeighbor.isNorth),westNeighbor.altitude))
@@ -2971,7 +3203,7 @@ function RiverMap:isLake(junction)
 	local eastAltitude = nil
 	if eastNeighbor == nil then
 		eastAltitude = junction.altitude
-		--print("--eastNeighbor == nil")
+		print("Warning: eastNeighbor == nil in RiverMap:isLake")
 	else
 		eastAltitude = eastNeighbor.altitude
 		--print(string.format("--eastNeighbor = (%d,%d) N = %s, alt = %f",eastNeighbor.x,eastNeighbor.y,tostring(eastNeighbor.isNorth),eastNeighbor.altitude))
@@ -3076,8 +3308,12 @@ function RiverMap:SiltifyLakes()
 		-- else
 			-- junction.altitude = avg
 		-- end
-
-		junction.altitude = junction.altitude + self:GetNeighborAverage(junction)
+		
+		if not self:isLake(junction) then
+			print("Debug: Fake Lake")
+		else
+			junction.altitude = junction.altitude + self:GetNeighborAverage(junction)
+		end
 
 		-- if self:isLake(junction) then
 			-- print("Oh bother")
@@ -3364,11 +3600,30 @@ function GeneratePlates(W,H,xWrap,yWrap,Plates)
 	local Size = PWRandInt(minSize,maxSize)
 	PlateMap = PlateMap:New(W,H,xWrap,yWrap)
 
-	--Determine plate centers
+
+	if (Plates <= 10) then --Warn if extremely few plates
+		print(string.format("Warning: GeneratePlates not intended to work with only %i plates.", Plates))
+	end
+
+	-- initialize polar plate settings (the two polar plates are handled separately -LL).
+	local PolarWidth
+	do
+		local latRange = mc.topLatitude - mc.bottomLatitude
+		local icefreeLatRange = mc.iceNorthLatitudeLimit - mc.iceSouthLatitudeLimit
+		--This produces a width giving at least 2/3 of the ice-possible rows on the plates
+		PolarWidth = math.ceil((1/3)*((latRange - icefreeLatRange)/latRange))
+	end
+	
 	--PlateMap.centers = {}
-	for k = 1, Plates do
-		local XY = PWRandInt(0,WH-1)
-		PlateMap.centers[k] = XY
+	for k = 1, Plates do	--Determine plate centers -LL
+		if k == 1 or k == 2 then	--north and south pole plates treated separately
+			--This sets these twice which is unnecessary but doesn't hurt anything
+			PlateMap.centers[1] = 0
+			PlateMap.centers[2] = WH - 1
+		else	--place other centers at random (not in first or last row
+			local XY = PWRandInt(W,WH - W - 1)
+			PlateMap.centers[k] = XY
+		end
 	end
 
 	--Sets up a blank table with an index for every tile on the map. -Bobert13
@@ -3386,7 +3641,18 @@ function GeneratePlates(W,H,xWrap,yWrap,Plates)
 		PlateMap.neighbors[PlateID] = {}
 		table.insert(PlateMap.neighbors[PlateID],PlateID)
 	end
-	for PlateID =1, Plates, 1 do
+	--First construct polar plates ...
+	for i = 0, W - 1 do
+		PlateMap.ID[i] = 1
+		PlateMap.ID[WH - W + i] = 2
+		table.insert(PlateMap.info[1],i)
+		table.insert(PlateMap.info[2],WH - W + i)
+	end
+	table.insert(PlateMap.size, W)
+	table.insert(PlateMap.size, W)
+
+	--... then nonpolar plates
+	for PlateID =3, Plates, 1 do
 		--Iterates a spiral around the center tile checking tiles to add them.
 		local i = PlateMap.centers[PlateID]
 		local currentSize = 1
@@ -3498,10 +3764,12 @@ function GeneratePlates(W,H,xWrap,yWrap,Plates)
 		i=i+1
 	end
 
-	-- PlateMap:Save2("PlateMap.ID.csv")
+	--Debug
+	--PlateMap:Save2("PlateMap.ID.csv")
 end
 -------------------------------------------------------------------------------------------
 function GenerateFaults()
+	--TODO: Merge Bobert13's refactor
 	--This ubiquitously named function determines plate motions, neighbors, faults, and fault types.
 	local W = PlateMap.width
 	local H = PlateMap.height
@@ -3604,13 +3872,13 @@ function GenerateFaults()
 						else				--Others move sideways so are transform -LL
 							PlateMap.fault[i] = mc.TRANSFORMFAULT
 						end
-						--print(string.format("Debug 0 -- Direction '%x'",dir))
 					end
 				end
 			end
 		end
 	end
 	
+	--Debug
 	--PlateMap:Save3("PlateMap.fault.csv")
 end
 -------------------------------------------------------------------------------------------
@@ -3757,6 +4025,8 @@ function CreateContinentalShelf(W,H)
             PlateMap.type[index] = mc.OCEANIC
         elseif H > 32 and Blockade(index,Plates[i],W,H) then
             PlateMap.type[index] = mc.OCEANIC
+		elseif i == 1 or i == 2 then	--polar plates always oceanic
+			PlateMap.type[index] = mc.OCEANIC
         else
             PlateMap.type[index] = mc.CONTINENTAL
             contSize = contSize + PlateMap.size[index]
@@ -3782,6 +4052,8 @@ function CreateContinentalShelf(W,H)
                 elseif H > 32 and Blockade(index,Plates[i],W,H) then
                     PlateMap.type[index] = mc.OCEANIC
                     --print(string.format("Blockade at plate %d", Plates[i]))
+				elseif i == 1 or i == 2 then	--polar plates always oceanic
+					PlateMap.type[index] = mc.OCEANIC
                 else
                     PlateMap.type[index] = mc.CONTINENTAL
                     contSize = contSize + PlateMap.size[index]
@@ -3863,6 +4135,8 @@ function CreatePangealShelf(W,H)
             PlateMap.type[index] = mc.OCEANIC
         elseif H > 32 and Blockade(index,Plates[i],W,H) then
             PlateMap.type[index] = mc.OCEANIC
+		elseif i == 1 or i == 2 then	--polar plates always oceanic
+			PlateMap.type[index] = mc.OCEANIC
         else
             local landNeighbor = false
             for k = 1, #PlateMap.neighbors[index] do
@@ -3901,6 +4175,8 @@ function CreatePangealShelf(W,H)
                 elseif H > 32 and Blockade(index,Plates[i],W,H) then
                     PlateMap.type[index] = mc.OCEANIC
                     --print(string.format("Blockade at plate %d", Plates[i]))
+				elseif i == 1 or i == 2 then	--polar plates always oceanic
+					PlateMap.type[index] = mc.OCEANIC
                 else
                     local landNeighbor = false
                     for k = 1, #PlateMap.neighbors[index] do
@@ -3959,59 +4235,270 @@ function CreatePangealShelf(W,H)
 	print(string.format("%d plates flipped, in %d iterations, to make %.2f%% of the map pangeal shelf. - Planet Simulator", contCount, loopCount, contPercent * 100))
 end
 -------------------------------------------------------------------------------------------
---TODO: New; still needs organization -LL
 function AdjacentContinentalTiles(x,y)
+	--Returns a set containing all directions from the tile at (x,y) for which the
+	--neighbor tile in that direction is continental (or pangeal).
+	--Note that this includes the direction mc.C if the tile at (x,y) is continental/pangeal
 	local returnSet = Set:New({})
 	local xx, yy, valid, ii, plateType
 	
-	--print("Debug 1.1")
-	
 	for dir,_ in pairs(mc.DIRECTIONS) do
-		--print("Debug 1.2")
 		xx, yy, valid = PlateMap:GetNeighbor(x,y,dir,true)
-		--print("Debug 1.3")
 		if valid then
-			--print("Debug 1.4")
 			ii = PlateMap:GetIndex(xx,yy)
-			--print("Debug 1.5")
 			plateType = PlateMap.type[GetPlateByID(PlateMap.ID[ii])]
-			--print("Debug 1.6")
 			if plateType == mc.CONTINENTAL or plateType == mc.PANGEAL then
-				--print("Debug 1.7")
 				returnSet:add(dir)
-				--print("Debug 1.8")
 			end
-			--print("Debug 1.9")
 		end
 	end
 	
-	--print("Debug 1.10")
-
 	return returnSet
+end
+
+function DetermineLandPattern(landDirs)
+	--[[ Given a set of directions from a central tile in which the pointed-at tile is
+	land, this function determines the pattern the land tiles form, and what position
+	in that pattern each land tile is in. (This function identifies patterns up to
+	symmetry, so two different sets of directions will return the same pattern if they
+	can be rotated or reflected to be the same, although the table of positions will differ.)
+	
+	Returns first the pattern (one of mc.BALANCED, mc.UNBALANCED, mc.CONTIGUOUS, or -1 (the
+	last if there is only one pattern for the number of land tiles in landDirs)) and second
+	a table whose indices are the directions in landDirs and whose values are the position
+	that tile is in in the pattern (one of mc.CENTER, mc.LONE, mc.SHORE, mc.INTERMEDIATE,
+	or mc.INLAND; see below for details).
+	
+	NOTE: THIS FUNCTION ASSUMES THE CENTRAL TILE IS LAND. It *probably* works even if the
+	center tile is water (although it will give a warning and will have the position table
+	include posTable[mc.C] = mc.CENTER even though mc.C isn't in landDirs in this case),
+	but it hasn't been tested.
+	Since the central tile is assumed to be land, there are 13 possible patterns:
+	1 land: (1 of 1 type)
+	 W W
+	W L W	- Includes land position center
+	 W W
+	2 land: (6 of 1 type)
+	 W W	
+	W L L	- Includes land positions center, lone
+	 W W
+	3 land: (6, 6, and 3 of 3 types)
+	 W W	Pattern CONTIGUOUS
+	W L L	- Includes land positions center, shore
+	 W L
+	 W W	Pattern UNBALANCED
+	W L L	- Includes land positions center, lone
+	 L W
+	 W W	Pattern BALANCED
+	L L L	- Includes land positions center, lone
+	 W W
+	4 land: (6, 12, and 2 of 3 types)
+	 W W	Pattern CONTIGUOUS
+	W L L	- Includes land positions center, shore, inland
+	 L L
+	 W W	Pattern UNBALANCED
+	L L L	- Includes land positions center, lone, shore
+	 W L
+	 L W	Pattern BALANCED
+	W L L	- Includes land positions center, lone
+	 L W
+	5 land:
+	 W L	Pattern CONTIGUOUS
+	W L L	- Includes land positions center, shore, inland
+	 L L
+	 W L	Pattern UNBALANCED
+	L L L	- Includes land positions center, lone, shore, inland
+	 W L
+	 L W	Pattern BALANCED
+	L L L	- Includes land positions center, shore
+	 W L
+	6 land:
+	 L L
+	W L L	- Includes land positions center, shore, intermediate, inland
+	 L L
+	7 land:
+	 L L
+	L L L	- Includes land positions center, inland
+	 L L
+	]]
+	landCount = landDirs:length()
+	local pattern = -1	--if we never need to set this, no function should expect it; so send -1 as default warning
+	local posTable = {}
+	if not landDirs:contains(mc.C) then
+		print("Warning: DetermineLandPattern called centered on oceanic tile")
+		landCount = landCount + 1	--Everything assumes center tile is land, so pretend it is
+	end
+	posTable[mc.C] = mc.CENTER
+	if landCount == 1 then
+		--Do Nothing
+	elseif landCount == 2 then
+		for dir,_ in pairs(landDirs) do
+			if dir ~= mc.C then
+				posTable[dir] = mc.LONE
+			end
+		end
+	elseif landCount == 3 then
+		for dir,_ in pairs(landDirs) do
+			if dir == mc.C then 
+				--Do Nothing
+			elseif landDirs:contains(mc:GetClockwiseDir(dir)) then
+				pattern = mc.CONTIGUOUS
+				posTable[dir] = mc.SHORE
+				posTable[mc:GetClockwiseDir(dir)] = mc.SHORE
+				break
+			elseif landDirs:contains(mc:GetClockwiseDir(mc:GetClockwiseDir(dir))) then
+				pattern = mc.UNBALANCED
+				posTable[dir] = mc.LONE
+				posTable[mc:GetClockwiseDir(mc:GetClockwiseDir(dir))] = mc.LONE
+				break
+			elseif landDirs:contains(mc:GetOppositeDir(dir)) then
+				pattern = mc.BALANCED
+				posTable[dir] = mc.LONE
+				posTable[mc:GetOppositeDir(dir)] = mc.LONE
+				break
+			end
+		end
+	elseif landCount == 4 then
+		for dir,_ in pairs(landDirs) do
+			if dir == mc.C then 
+				--Do Nothing
+			else
+				if landDirs:contains(mc:GetOppositeDir(dir)) then
+					pattern = mc.UNBALANCED
+					local oppDir = mc:GetOppositeDir(dir)
+					local thirdDir
+					for innerDir,_ in pairs(landDirs) do
+						if innerDir ~= mc.C and innerDir ~= dir and innerDir ~= oppDir then
+							thirdDir = innerDir
+							break
+						end
+					end
+					posTable[thirdDir] = mc.SHORE
+					if mc:GetClockwiseDir(thirdDir) == dir or mc:GetCounterclockwiseDir(thirdDir) == dir then
+						posTable[dir] = mc.SHORE
+						posTable[oppDir] = mc.LONE
+					elseif mc:GetClockwiseDir(thirdDir) == oppDir or mc:GetCounterclockwiseDir(thirdDir) == oppDir then
+						posTable[oppDir] = mc.SHORE
+						posTable[dir] = mc.LONE
+					else
+						print("Warning: unexpected land positions in DetermineLandPattern (unbalanced 4 land)")
+					end
+					break
+				elseif landDirs:contains(mc:GetClockwiseDir(mc:GetClockwiseDir(dir))) then
+					if landDirs:contains(mc:GetClockwiseDir(dir)) then
+						pattern = mc.CONTIGUOUS
+						posTable[dir] = mc.SHORE
+						posTable[mc:GetClockwiseDir(dir)] = mc.INLAND
+						posTable[mc:GetClockwiseDir(mc:GetClockwiseDir(dir))] = mc.SHORE
+						break
+					elseif landDirs:contains(mc:GetCounterclockwiseDir(mc:GetCounterclockwiseDir(dir))) then
+						pattern = mc.BALANCED
+						posTable[dir] = mc.LONE
+						posTable[mc:GetClockwiseDir(mc:GetClockwiseDir(dir))] = mc.LONE
+						posTable[mc:GetCounterclockwiseDir(mc:GetCounterclockwiseDir(dir))] = mc.LONE
+						break
+					end
+				end
+			end
+		end
+	elseif landCount == 5 then
+		local waterDirs = Set:New({})
+		--Every direction that isn't continental/pangeal plate is oceanic plate
+		--(Or off the map, which we count as oceanic)
+		for dir,_ in pairs(mc.DIRECTIONS) do
+			if not landDirs:contains(dir) then
+				waterDirs:add(dir)
+			end
+		end
+		
+		for dir,_ in pairs(waterDirs) do
+			if waterDirs:contains(mc:GetClockwiseDir(dir)) then
+				pattern = mc.CONTIGUOUS
+				posTable[mc:GetClockwiseDir(mc:GetClockwiseDir(dir))] = mc.SHORE
+				posTable[mc:GetOppositeDir(dir)] = mc.INLAND
+				posTable[mc:GetCounterclockwiseDir(mc:GetCounterclockwiseDir(dir))] = mc.INLAND
+				posTable[mc:GetCounterclockwiseDir(dir)] = mc.SHORE
+				break
+			elseif waterDirs:contains(mc:GetClockwiseDir(mc:GetClockwiseDir(dir))) then
+				pattern = mc.UNBALANCED
+				posTable[mc:GetClockwiseDir(dir)] = mc.LONE
+				posTable[mc:GetOppositeDir(dir)] = mc.SHORE
+				posTable[mc:GetCounterclockwiseDir(mc:GetCounterclockwiseDir(dir))] = mc.INLAND
+				posTable[mc:GetCounterclockwiseDir(dir)] = mc.SHORE
+				break
+			elseif waterDirs:contains(mc:GetOppositeDir(dir)) then
+				pattern = mc.BALANCED
+				for dir2,_ in pairs(landDirs) do
+					if dir2 ~= mc.C then
+						posTable[dir2] = mc.SHORE
+					end
+				end
+				break
+			end
+		end
+	elseif landCount == 6 then
+		local waterDir = nil
+		for dir,_ in pairs(mc.DIRECTIONS) do
+			if not landDirs:contains(dir) then
+				waterDir = dir
+			end
+		end
+		if not waterDir then 
+			print("Warning: Unexpected number of directions in DetermineLandPattern")
+			print(string.format("#landDirs == %x", #landDirs))
+			print("landDirs are:")
+			for dir,_ in pairs(landDirs) do
+				print(string.format("%x",dir))
+			end
+		end
+		
+		posTable[mc:GetOppositeDir(waterDir)] = mc.INLAND
+		posTable[mc:GetClockwiseDir(mc:GetClockwiseDir(waterDir))] = mc.INTERMEDIATE
+		posTable[mc:GetCounterclockwiseDir(mc:GetCounterclockwiseDir(waterDir))] = mc.INTERMEDIATE
+		posTable[mc:GetClockwiseDir(waterDir)] = mc.SHORE
+		posTable[mc:GetCounterclockwiseDir(waterDir)] = mc.SHORE
+	elseif landCount == 7 then
+		for dir,_ in pairs(mc.DIRECTIONS) do
+			if dir ~= mc.C then
+				posTable[dir] = mc.INLAND
+			end
+		end
+	else
+		print(string.format("Warning: Unexpected number of land tiles (%i) in DetermineLandPattern",landCount))
+	end
+	
+	return pattern, posTable
 end
 
---[[
-Since the central tile must be continental, there are 13 possibilities
-for how adjacent continental/oceanic tiles can be distributed (up to symmetry):
-0 land: (1 of 1 type)
- W W
-W L W
- W W
-1 land: (6 of 1 type)
- W W
-W L L
- W W
-2 land: (6, 6, and 3 of 3 types)
- W W    W W    W W
-W L L  W L L  L L L
- W L    L W    W W
-3 land: (6, 12, and 2 of 3 types)
- W W    W W    L W
-W L L  L L L  W L L
- L L    W L    L W
-4/5/6 land: opposite of 2/1/0 land, respectively
-]]
-function LiftAtContinentalConvergence(x,y)
+function UpliftAtFault(x,y,faultType)
+	--Elevates tiles along faults to a degree based on the local continental/oceanic
+	--plate patterns, as determined by DetermineLandPatterns. Returns the sum of the
+	--percent increases in elevation made as a rough measure of how much uplifting
+	--was done
+
+	--Note: Assumes everything in landDirs is a valid tile (i.e. lies on the map)
+	local landDirs = AdjacentContinentalTiles(x,y)
+	local netUplift = 0
+	if not landDirs:contains(mc.C) then
+		print("Warning: UpliftAtFault called on oceanic tile")
+	end
+	local pattern, positionLookupTable = DetermineLandPattern(landDirs)
+	for dir, _ in pairs(landDirs) do
+		if positionLookupTable[dir] == nil then	--Warn that dir is missing
+			print(string.format("Warning: Direction %i not found in positionLookupTable in UpliftAtFault", dir))
+		end
+		local xx, yy = PlateMap:GetNeighbor(x,y,dir)
+		local index = PlateMap:GetIndex(xx,yy)
+		local coeff = mc:GetUpliftCoeff(faultType, landDirs:length(), pattern, positionLookupTable[dir])
+		PlateMap.data[index] = PlateMap.data[index] * coeff
+		netUplift = netUplift + (coeff - 1)
+	end
+	return netUplift
+end
+
+--An old method of uplifting mountains that seemed promising but which I never
+--got to work at all reasonably. --LL
+--[[function LiftAtContinentalConvergence(x,y)
 	--Note: Assumes everything in landDirs is a valid tile (i.e. lies on the map)
 	--print("Debug 1")
 	local landDirs = AdjacentContinentalTiles(x,y)
@@ -4019,13 +4506,6 @@ function LiftAtContinentalConvergence(x,y)
 	if not landDirs:contains(mc.C) then
 		print("Warning: LiftAtContinentalConvergence called on oceanic tile")
 	end
-	--[[do	--Debug
-		print("landDirs:length() ==", landDirs:length())
-		print("landDirs are:")
-		for dir,_ in pairs(landDirs) do
-			print(string.format("%x",dir))
-		end
-	end]]
 	if landDirs:length() == 1 then
 		print("Warning: Unexpected single-tile continent detected by LiftAtContinentalConvergence")
 		PlateMap.data[PlateMap:GetIndex(x,y)] = PlateMap.data[PlateMap:GetIndex(x,y)] * 1.05
@@ -4041,7 +4521,8 @@ function LiftAtContinentalConvergence(x,y)
 		--Do Nothing TODO: Change?
 	elseif landDirs:length() == 4 then
 		landDirs:delete(mc.C)
-		for dir, _ in ipairs(landDirs) do
+		--for dir, _ in ipairs(landDirs) do --This is wrong, but is what it used to be
+		for dir, _ in pairs(landDirs) do
 			-- Only add elevation if all three land tiles are contiguous
 			if landDirs:contains(mc:GetClockwiseDir(dir)) and landDirs:contains(mc:GetCounterclockwiseDir(dir)) then
 				local xx = {}
@@ -4146,96 +4627,8 @@ function LiftAtContinentalConvergence(x,y)
 		print("Warning: Unexpected oceans in LiftAtContinentalConvergence")
 		print(string.format("landDirs:length() == %x",landDirs:length()))
 	end
-end
--------------------------------------------------------------------------------------------
---[[function OldGenerateElevations(W,H,xWrap,yWrap)
-	--This function takes all of the data we've generated up to this point and translates it into a crude elevation map.
-	local WH = W*H
-	local scalar = 4
-
-	local inputNoise = FloatMap:New(W,H,xWrap,yWrap)
-	inputNoise:GenerateNoise()
-	inputNoise:Normalize()
-	local inputNoise2 = FloatMap:New(W,H,xWrap,yWrap)
-	inputNoise2:GenerateNoise()
-	inputNoise2:Normalize()
-
-	PlateMap:GenerateNoise()
-	PlateMap:Normalize()
-
-    -- local landFactor = mc.continentalPercent/contPercent
-    local landFactor = contPercent/mc.continentalPercent
-	for i = 0, WH-1, 1 do
-		if GetPlateType(i) == mc.PANGEAL or GetPlateType(i) == mc.CONTINENTAL then
-			if PlateMap.fault[i] == mc.CONVERGENTFAULT then
-				PlateMap.data[i] = PlateMap.data[i] * 3 * (landFactor)^scalar
-				--PlateMap.data[i] = PlateMap.data[i] * 0.25 * (landFactor)^scalar
-			elseif PlateMap.fault[i] == mc.TRANSFORMFAULT then
-				PlateMap.data[i] = PlateMap.data[i] * 0.25 * (landFactor)^scalar
-				--PlateMap.data[i] = PlateMap.data[i] * 3 * (landFactor)^scalar
-			else	--Divergent, Minor, or No Fault -LL
-				PlateMap.data[i] = PlateMap.data[i] * 0.2 * (landFactor)^scalar
-			end
-
-            -- if PlateMap.ID[i] == sinkPlate and landFactor > 1.03 then
-                -- PlateMap.data[i] = PlateMap.data[i]/(landFactor^((100 * landFactor) - 100))
-                -- -- PlateMap.data[i] = PlateMap.data[i] / ((PlateMap.size[GetPlateByID(sinkPlate)]/WH) / (contPercent - mc.continentalPercent))
-            -- elseif PlateMap.ID[i] == sinkPlate and landFactor < 0.97 then
-                -- -- PlateMap.data[i] = PlateMap.data[i]*(landFactor^(100 - (100 * landFactor)))
-                -- PlateMap.data[i] = PlateMap.data[i] * ((landFactor - 1.0) / (PlateMap.size[GetPlateByID(sinkPlate)]/WH))
-            -- end
-		else							--This is an oceanic plate -LamilLerran
-			if PlateMap.fault[i] == mc.CONVERGENTFAULT then	--Populate faults with volcanos, which may create islands
-				local islandRand = PWRandInt(1,100)/100
-				if islandRand <= mc.oceanicVolcanoFrequency then
-					local old = PlateMap.data[i]
-					PlateMap.data[i] = PlateMap.data[i] * (0.05+(PWRandInt(1,2500)/10000)) * (1/landFactor)^scalar
-					if (mc.islandExpansionFactor ~= 0) then
-						--The adjustment size is what we got for the central tile being a "volcano" minus
-						--what we would have gotten if it weren't a volcano
-						local adjustment = PlateMap.data[i] - old * 0.0002
-						if adjustment > 0 then
-							local adjacentTiles = GetSpiral(i,1,1)
-							for n = 1, #adjacentTiles, 1 do
-								local j = adjacentTiles[n]
-								if j ~= -1 then	--i.e. skip if j is not on the map
-									PlateMap.data[j] = PlateMap.data[j] + mc.islandExpansionFactor * adjustment
-								end
-							end
-							local twoOutTiles = GetSpiral(i,2,2)
-							for n = 1, #twoOutTiles, 1 do
-								local j = twoOutTiles[n]
-								if j ~= -1 then	--i.e. skip if j is not on the map
-									PlateMap.data[j] = PlateMap.data[j] + mc.islandExpansionFactor * mc.islandExpansionFactor * adjustment
-								end
-							end
-						end
-					end
-				else
-					PlateMap.data[i] = PlateMap.data[i] * 0.0002
-				end
-			elseif PlateMap.fault[i] == mc.TRANSFORMFAULT then
-				PlateMap.data[i] = PlateMap.data[i] * 0.00005
-			else	--Divergent, Minor, or No Fault -LL
-				PlateMap.data[i] = PlateMap.data[i] * 0.00005
-			end
-		end
-	end
-
-	PlateMap:Normalize()
-
-	for i = 0, WH-1, 1 do
-		local x = i%W
-		local y = (i-x)/W
-		local val = PlateMap.data[i]
-		PlateMap.data[i] = (math.sin(val*math.pi*2-math.pi*0.5)*0.5+0.5)
-		PlateMap.data[i] = PlateMap.data[i] * GetAttenuationFactor(PlateMap,x,y)
-	end
-	PlateMap:Normalize()
-
-	--PlateMap:Save4("PlateMap.data.csv")
 end]]
-
+-------------------------------------------------------------------------------------------
 function GenerateElevations(W,H,xWrap,yWrap)
 	--This function takes all of the data we've generated up to this point and translates it into a crude elevation map.
 	local WH = W*H
@@ -4253,12 +4646,17 @@ function GenerateElevations(W,H,xWrap,yWrap)
 
     -- local landFactor = mc.continentalPercent/contPercent
     local landFactor = contPercent/mc.continentalPercent
+	local minUplift = 140
+	local currentUplifted = 0
 	for i = 0, WH-1, 1 do
 		if GetPlateType(i) == mc.PANGEAL or GetPlateType(i) == mc.CONTINENTAL then
 			if PlateMap.fault[i] == mc.CONVERGENTFAULT then
 				--PlateMap.data[i] = PlateMap.data[i] * 3 * (landFactor)^scalar
 				PlateMap.data[i] = PlateMap.data[i] * .3 * (landFactor)^scalar
-				LiftAtContinentalConvergence(PlateMap:GetXYFromIndex(i))
+				--LiftAtContinentalConvergence(PlateMap:GetXYFromIndex(i))
+				local x,y = PlateMap:GetXYFromIndex(i)
+				currentUplifted = currentUplifted + 	--Note the odd line break; I think it makes the purpose here clearer (and you can comment this one line out if abandoning keeping track of uplift coefficient amount)
+				UpliftAtFault(x,y,mc.CONVERGENTFAULT)
 			elseif PlateMap.fault[i] == mc.TRANSFORMFAULT then
 				PlateMap.data[i] = PlateMap.data[i] * 0.25 * (landFactor)^scalar
 			else	--Divergent, Minor, or No Fault -LL
@@ -4318,6 +4716,29 @@ function GenerateElevations(W,H,xWrap,yWrap)
 			end
 		end
 	end
+	
+	--If there are too few mountains it can cause deserts to fail to generate and tundra to spread
+	--way too far. This generates additional mountains if not enough uplift occured.
+	if currentUplifted < minUplift then
+		print(string.format("Sum of uplift coefficient values in excess of 1 insufficient at %.2f; adding failsafe mountains", currentUplifted))
+	end
+	while currentUplifted < minUplift do
+		i = PWRandInt(0, WH - 1)
+		if GetPlateType(i) == mc.PANGEAL or GetPlateType(i) == mc.CONTINENTAL then
+			--PlateMap.data[i] = PlateMap.data[i] * 6
+			--currentUplifted = currentUplifted + 3 --These mountains are not as well placed as standard mountains, so count for less
+			
+			local x,y = PlateMap:GetXYFromIndex(i)
+			for dir,_ in pairs(mc.DIRECTIONS) do
+				local xx,yy,valid
+				xx,yy,valid = PlateMap:GetNeighbor(x,y,dir,true)
+				if valid and (dir == mc.C or PWRandInt(1,3) == 1) then
+					newUpliftAmount = UpliftAtFault(x,y,mc.FALLBACKFAULT)
+					currentUplifted = currentUplifted + newUpliftAmount/3	--These mountains are not as well placed as standard mountains, so count for less
+				end
+			end
+		end
+	end
 
 	PlateMap:Normalize()
 
@@ -4330,18 +4751,20 @@ function GenerateElevations(W,H,xWrap,yWrap)
 	end
 	PlateMap:Normalize()
 
-	--PlateMap:Save4("PlateMap.data.csv")
+	--Debug
+	--PlateMap:Save4("PlateMap.data.csv",5)
 end
 -------------------------------------------------------------------------------------------
 function GetPlateByID(ID)
 	for i = 1, #PlateMap.index do
 		if PlateMap.index[i] == ID then
+			if PlateMap.size[i] == 0 then
+				print("Warning - Returning a dead plate")
+			end
 			return i
 		end
 	end
-    if PlateMap.size[i] == 0 then
-        print("Warning - Returning a dead plate")
-    end
+
 	print("Error - Attempted to get plate index for an invalid ID")
 end
 -------------------------------------------------------------------------------------------
@@ -4507,6 +4930,9 @@ function GenerateElevationMap(width,height,xWrap,yWrap)
 	end
 
 	elevationMap.seaLevelThreshold = elevationMap:FindThresholdFromPercent(mc.landPercent,true,false)
+	
+	--Debug
+	--elevationMap:Save4("elevationMap.data.csv",5)
 
 	return elevationMap
 end
@@ -5232,6 +5658,9 @@ function GeneratePlotTypes()
 	FillInLakes()
 	ShiftMaps()
 	DiffMap = GenerateDiffMap(W,H,true,false)
+	
+	--Debug
+	--elevationMap:Save4("elevationMap-afterShiftMaps.data.csv",5)
 
 	--now gen plot types
 	print("Generating plot types - Planet Simulator")
@@ -5298,10 +5727,11 @@ function GeneratePlotTypes()
 	riverMap:SiltifyLakes()
 	riverMap:SetFlowDestinations()
 	riverMap:SetRiverSizes(rainfallMap)
+	--Debug -- doesn't work
+	--riverMap:Save4("riverMap.data.csv",5)
 
 	GenerateCoasts({expansion_diceroll_table = mc.coastExpansionChance});
 
-	--TODO: Option to not remove ocean tiles from polar "inland" seas
 	--removes "ocean" tiles from inland seas
 	for n=1, #PlateMap.index, 1 do
 		if PlateMap.type[n] == 0 then
