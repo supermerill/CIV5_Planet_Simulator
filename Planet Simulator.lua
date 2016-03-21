@@ -222,6 +222,8 @@ function MapConstants:New()
 
 	mconst.MultiPlayer = Game:IsNetworkMultiPlayer()
 
+	-- set vars from custom options (and choose random)
+	mconst:InitializeWorldType()
 	mconst:InitializeUpliftCoefficients()
 	mconst:InitializeWorldAge()
 	mconst:InitializeTemperature()
@@ -231,6 +233,15 @@ function MapConstants:New()
 	mconst:InitializeLakes()
 	mconst:InitializeIslands()
 	return mconst
+end
+-------------------------------------------------------------------------------------------
+function MapConstants:InitializeWorldType()
+	-- Map.GetCustomOption(6)  Continents, pangea, terra , continent or terra
+	self.IS_PANGEA = Map.GetCustomOption(6) == 2;
+	self.IS_TERRA = Map.GetCustomOption(6) == 3;
+	if Map.GetCustomOption(6) == 4 then
+		self.IS_TERRA = Map.Rand(2, "Random choice between terra and continents") == 2;
+	end
 end
 -------------------------------------------------------------------------------------------
 function MapConstants:InitializeUpliftCoefficients()
@@ -750,7 +761,8 @@ function GetMapScriptInfo()
 				{
 					"Continents",
 					"Pangaea",
-					"Other (n/a)"
+					"Terra",
+					"Terra or Continents"
 				},
 				DefaultValue = 1,
 				SortPriority = 2,
@@ -821,18 +833,18 @@ function GetMapInitData(worldSize)
 		[GameInfo.Worlds.WORLDSIZE_LARGE.ID] = {104, 64},
 		[GameInfo.Worlds.WORLDSIZE_HUGE.ID] = {128, 80}
 		}
-	--TODO: Re-enable?
-	--if Map.GetCustomOption(6) == 2 then
+	
+	if mc.IS_TERRA then
 		-- Enlarge terra-style maps to create expansion room on the new world
-		--worldsizes = {
-		--[GameInfo.Worlds.WORLDSIZE_DUEL.ID] = {52, 32},
-		--[GameInfo.Worlds.WORLDSIZE_TINY.ID] = {64, 40},
-		--[GameInfo.Worlds.WORLDSIZE_SMALL.ID] = {84, 52},
-		--[GameInfo.Worlds.WORLDSIZE_STANDARD.ID] = {104, 64},
-		--[GameInfo.Worlds.WORLDSIZE_LARGE.ID] = {122, 76},
-		--[GameInfo.Worlds.WORLDSIZE_HUGE.ID] = {144, 90},
-		--}
-	--end
+		worldsizes = {
+		[GameInfo.Worlds.WORLDSIZE_DUEL.ID] = {52, 32},
+		[GameInfo.Worlds.WORLDSIZE_TINY.ID] = {64, 40},
+		[GameInfo.Worlds.WORLDSIZE_SMALL.ID] = {84, 52},
+		[GameInfo.Worlds.WORLDSIZE_STANDARD.ID] = {104, 64},
+		[GameInfo.Worlds.WORLDSIZE_LARGE.ID] = {122, 76},
+		[GameInfo.Worlds.WORLDSIZE_HUGE.ID] = {144, 90},
+		}
+	end
 	local grid_size = worldsizes[worldSize];
 	--
 	local world = GameInfo.Worlds[worldSize];
@@ -3887,13 +3899,11 @@ function DetermineRiftZone(W,H,k,centerRift,modifier)
     local RiftAmt = 0
     local typeScalar = 0
 
-    if Map.GetCustomOption(6) == 1 then
-        typeScalar = 20
-    elseif Map.GetCustomOption(6) == 2 then
-        typeScalar = 12
-    else
-        typeScalar = 20
-    end
+	if mc.IS_PANGEA then
+		typeScalar = 12
+	else
+		typeScalar = 20
+	end
 
     for n = 1, PlateMap.size[k] do
 		local i = PlateMap.info[k][n]
@@ -3958,7 +3968,7 @@ function Blockade(k,ID,W,H)
 		big = big + PlateMap.size[GetPlateByID(PlateMap.ToDo[n])]
 	end
 
-	if big > (W*H)/6 and Map.GetCustomOption(6) == 1 then
+	if big > (W*H)/6 and not mc.IS_PANGEA then
 		-- print("too big")
 		return true
 	else
@@ -4781,12 +4791,12 @@ function SimulateTectonics(W,H,xWrap,yWrap)
 
 	GenerateFaults()
 
-    if Map.GetCustomOption(6) == 1 then
-        --print("Generating Continents style map")
-        CreateContinentalShelf(W,H)
-    else
+    if mc.IS_PANGEA then
         --print("Generating Pangea style map.")
         CreatePangealShelf(W,H)
+    else
+        --print("Generating Continents style map")
+        CreateContinentalShelf(W,H)
     end
 
 	GenerateElevations(W,H,xWrap,yWrap)
@@ -7014,19 +7024,18 @@ function StartPlotSystem()
 		res = 1 + Map.Rand(3, "Random Resources Option - Lua");
 	end
 
-	local starts = Map.GetCustomOption(6)
+	-- Regional Division Method 2: Continental or 1:Terra (using terra setting for pangea)
 	local divMethod = nil
-	if starts == 1 then
-		divMethod = 2
-	else
+	if mc.IS_PANGEA or mc.IS_TERRA then
 		divMethod = 1
+	else
+		divMethod = 2
 	end
 
 	print("Creating start plot database.");
 	local start_plot_database = AssignStartingPlots.Create()
 
 	print("Dividing the map in to Regions.");
-	-- Regional Division Method 2: Continental or 1:Terra
 	local args = {
 		method = divMethod,
 		resources = res,
