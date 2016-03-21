@@ -45,7 +45,9 @@ function MapConstants:New()
 	local mconst = {}
 	setmetatable(mconst, self)
 	self.__index = self
-
+	mconst:SetGameOptionConsts();
+	
+	
 	-------------------------------------------------------------------------------------------
 	--Landmass constants
 	-------------------------------------------------------------------------------------------
@@ -170,6 +172,7 @@ function MapConstants:New()
 	--#######################################################################################--
 	--Below are map constants that should not be altered.
 	--#######################################################################################--
+
 	--directions
 	mconst.C = 0
 	mconst.W = 1
@@ -232,14 +235,38 @@ function MapConstants:New()
 	--mconst:NormalizeLatitudeForArea()
 	mconst:InitializeLakes()
 	mconst:InitializeIslands()
+	mconst:InitializeFishAbundance()
 	return mconst
 end
 -------------------------------------------------------------------------------------------
+function MapConstants:InitializeFishAbundance()
+	--standard
+	if Map.GetCustomOption(self.OptFish) == 1 then
+	-- same as this (0->8)
+	-- local fish_radius = Map.Rand(7, "Fish Radius - Place Fish LUA");
+	-- if fish_radius > 5 then
+		-- fish_radius = 3;
+	-- end
+		self.fishSpaceArray = {12.5, 25, 37.5, 75, 87.5, 100,100,100};
+		self.freqFish = 10;
+	end
+	--abundant
+	if Map.GetCustomOption(self.OptFish) == 2 then
+		self.fishSpaceArray = {20,45,80,93,97,99,100,100};
+		self.freqFish = 5;
+	end
+	--plentiful
+	if Map.GetCustomOption(self.OptFish) == 3 then
+		self.fishSpaceArray = {40,80,100,100,100,100,100,100};
+		self.freqFish = 3;
+	end
+end
+-------------------------------------------------------------------------------------------
 function MapConstants:InitializeWorldType()
-	-- Map.GetCustomOption(6)  Continents, pangea, terra , continent or terra
-	self.IS_PANGEA = Map.GetCustomOption(6) == 2;
-	self.IS_TERRA = Map.GetCustomOption(6) == 3;
-	if Map.GetCustomOption(6) == 4 then
+	-- Map.GetCustomOption(self.OptMapPreset)  Continents, pangea, terra , continent or terra
+	self.IS_PANGEA = Map.GetCustomOption(self.OptMapPreset) == 2;
+	self.IS_TERRA = Map.GetCustomOption(self.OptMapPreset) == 3;
+	if Map.GetCustomOption(self.OptMapPreset) == 4 then
 		self.IS_TERRA = Map.Rand(2, "Random choice between terra and continents") == 2;
 	end
 end
@@ -472,7 +499,7 @@ function MapConstants:GetUpliftCoeff(faultType, landCount, pattern, position)
 end
 -------------------------------------------------------------------------------------------
 function MapConstants:InitializeWorldAge()
-	local age = Map.GetCustomOption(1)
+	local age = Map.GetCustomOption(self.OptWorldAge)
 	if age == 4 then
 		age = 1 + Map.Rand(3, "Random World Age Option - Planet Simulator");
 	end
@@ -492,7 +519,7 @@ function MapConstants:InitializeWorldAge()
 end
 -------------------------------------------------------------------------------------------
 function MapConstants:InitializeTemperature()
-	local temp = Map.GetCustomOption(2)
+	local temp = Map.GetCustomOption(self.OptTemperature)
 	if temp == 4 then
 		temp = 1 + Map.Rand(3, "Random World Temperature Option - Planet Simulator");
 	end
@@ -539,7 +566,7 @@ function MapConstants:InitializeTemperature()
 end
 -------------------------------------------------------------------------------------------
 function MapConstants:InitializeRainfall()
-	local rain = Map.GetCustomOption(3)
+	local rain = Map.GetCustomOption(self.OptRainfall)
 	if rain == 4 then
 		rain = 1 + Map.Rand(3, "Random World Rainfall Option - Planet Simulator");
 	end
@@ -580,7 +607,7 @@ function MapConstants:InitializeRainfall()
 end
 -------------------------------------------------------------------------------------------
 function MapConstants:InitializeSeaLevel()
-	local sea = Map.GetCustomOption(4)
+	local sea = Map.GetCustomOption(self.OptSeaLevel)
 	if sea == 4 then
 		sea = 1 + Map.Rand(3, "Random Sea Level Option - Planet Simulator");
 	end
@@ -606,7 +633,7 @@ function MapConstants:InitializeCoasts()
 	-- than two ocean-separated continental regions).
 	-- Random does not include the extreme cases of Superfluously Wide or Land-Adjacent
 	-- Only coasts.
-	local width = Map.GetCustomOption(8)
+	local width = Map.GetCustomOption(self.OptCoast)
 	if width == 8 then
 		width = 2 + Map.Rand(5, "Random Coastal Width Option - Planet Simulator")
 	end
@@ -637,7 +664,7 @@ end
 function MapConstants:InitializeLakes()
 	self.lakeFactor = 1
 	--TODO: Make this actually do something useful
-	--[[local lakes = Map.GetCustomOption(9)
+	--[[local lakes = Map.GetCustomOption(self.OptIsland)
 	if lakes == 4 then
 		lakes = 1 + Map.Rand(3, "Random Lakes Option - Planet Simulator");
 	end
@@ -655,7 +682,7 @@ end
 -------------------------------------------------------------------------------------------
 function MapConstants:InitializeIslands()
 	--TODO: could use some fine tuning, especially for island expansion -LamilLerran
-	local isles = Map.GetCustomOption(9)
+	local isles = Map.GetCustomOption(self.OptIsland)
 	if isles == 6 then
 		isles = 1 + Map.Rand(5, "Random Oceanic Islands Option - Planet Simulator");
 	end
@@ -750,11 +777,7 @@ function GetMapScriptInfo()
 		SortIndex = 1,
 		CustomOptions =
         {
-			world_age,
-			temperature,
-			rainfall,
-			sea_level,
-			resources,
+			-- Following option by Bobert13 and merill
 			{
 				Name = "Map Preset",
 				Values =
@@ -767,16 +790,11 @@ function GetMapScriptInfo()
 				DefaultValue = 1,
 				SortPriority = 2,
             },
-            {
-                Name = "Start Placement",
-                Values = {
-                    "Start Anywhere",
-                    "Largest Continent"
-                },
-                DefaultValue = 1,
-                SortPriority = 1,
-            },
-			-- Following options by LamilLerran
+			world_age,
+			temperature,
+			rainfall,
+			sea_level,
+			-- Following option by LamilLerran
 			{
 				Name = "Coastal Waters",
 				Values = 
@@ -793,6 +811,7 @@ function GetMapScriptInfo()
 				DefaultValue = 4,
 				SortPriority = 3,
 			},
+			-- Following option by LamilLerran
 			{
 				Name = "Islands",
 				Values =
@@ -807,6 +826,29 @@ function GetMapScriptInfo()
 				DefaultValue = 2,
 				SortPriority = 4,
 			},
+			-- Following option by Merill
+			{
+				Name = "Fish",
+				Values =
+				{
+					"Standard",
+					"Comfortable",
+					"Abundant"
+				},
+				DefaultValue = 1,
+				SortPriority = 5,
+			},
+			-- Following option by LamilLerran
+			resources,
+            {
+                Name = "Start Placement",
+                Values = {
+                    "Start Anywhere",
+                    "Largest Continent"
+                },
+                DefaultValue = 1,
+                SortPriority = 1,
+            },
 			--[[
 			{
 				Name = "Lakes",
@@ -822,6 +864,21 @@ function GetMapScriptInfo()
 			},]]
         },
 	};
+end
+-------------------------------------------------------------------------------------------
+-- modify this if you modify the order of gameoption above
+function MapConstants:SetGameOptionConsts()
+	-- GameOptions indexes
+	self.OptMapPreset 	= 1;
+	self.OptWorldAge 		= 2;
+	self.OptTemperature	= 3;
+	self.OptRainfall 		= 4;
+	self.OptSeaLevel 		= 5;
+	self.OptCoast 		= 6;
+	self.OptIsland 		= 7;
+	self.OptFish			= 8;
+	self.OptResources 	= 9;
+	self.OptStart			= 10;
 end
 -------------------------------------------------------------------------------------------
 function GetMapInitData(worldSize)
@@ -7019,7 +7076,7 @@ end
 -------------------------------------------------------------------------------------------
 function StartPlotSystem()
 	-- Get Resources setting input by user.
-	local res = Map.GetCustomOption(5)
+	local res = Map.GetCustomOption(mc.OptResources)
 	if res == 6 then
 		res = 1 + Map.Rand(3, "Random Resources Option - Lua");
 	end
@@ -7221,7 +7278,242 @@ function DetermineContinents()
 end
 
 ------------------------------------------------------------------------------
+function AssignStartingPlots:PlaceStrategicAndBonusResources()
+	-- KEY: {Resource ID, Quantity (0 = unquantified), weighting, minimum radius, maximum radius}
+	-- KEY: (frequency (1 per n plots in the list), impact list number, plot list, resource data)
+	--
+	-- The radius creates a zone around the plot that other resources of that
+	-- type will avoid if possible. See ProcessResourceList for impact numbers.
+	--
+	-- Order of placement matters, so changing the order may affect a later dependency.
+	
+	-- Adjust amounts, if applicable, based on Resource Setting.
+	local uran_amt, horse_amt, oil_amt, iron_amt, coal_amt, alum_amt = self:GetMajorStrategicResourceQuantityValues()
 
+	-- Adjust appearance rate per Resource Setting chosen by user.
+	local bonus_multiplier = 1;
+	if self.resource_setting == 1 then -- Sparse, so increase the number of tiles per bonus.
+		bonus_multiplier = 1.5;
+	elseif self.resource_setting == 3 then -- Abundant, so reduce the number of tiles per bonus.
+		bonus_multiplier = 0.66667;
+	end
+
+	-- Place Strategic resources.
+	print("Map Generation - Placing Strategics");
+	local resources_to_place = {
+	{self.oil_ID, oil_amt, 65, 1, 1},
+	{self.uranium_ID, uran_amt, 35, 0, 1} };
+	self:ProcessResourceList(9, 1, self.marsh_list, resources_to_place)
+
+	local resources_to_place = {
+	{self.oil_ID, oil_amt, 40, 1, 2},
+	{self.aluminum_ID, alum_amt, 15, 1, 2},
+	{self.iron_ID, iron_amt, 45, 1, 2} };
+	self:ProcessResourceList(16, 1, self.tundra_flat_no_feature, resources_to_place)
+
+	local resources_to_place = {
+	{self.oil_ID, oil_amt, 60, 1, 1},
+	{self.aluminum_ID, alum_amt, 15, 2, 3},
+	{self.iron_ID, iron_amt, 25, 2, 3} };
+	self:ProcessResourceList(17, 1, self.snow_flat_list, resources_to_place)
+
+	local resources_to_place = {
+	{self.oil_ID, oil_amt, 65, 0, 1},
+	{self.iron_ID, iron_amt, 35, 1, 1} };
+	self:ProcessResourceList(13, 1, self.desert_flat_no_feature, resources_to_place)
+
+	local resources_to_place = {
+	{self.iron_ID, iron_amt, 26, 0, 2},
+	{self.coal_ID, coal_amt, 35, 1, 3},
+	{self.aluminum_ID, alum_amt, 39, 2, 3} };
+	self:ProcessResourceList(22, 1, self.hills_list, resources_to_place)
+
+	local resources_to_place = {
+	{self.coal_ID, coal_amt, 30, 1, 2},
+	{self.uranium_ID, uran_amt, 70, 1, 2} };
+	self:ProcessResourceList(33, 1, self.jungle_flat_list, resources_to_place)
+	local resources_to_place = {
+	{self.coal_ID, coal_amt, 30, 1, 2},
+	{self.uranium_ID, uran_amt, 70, 1, 1} };
+	self:ProcessResourceList(39, 1, self.forest_flat_list, resources_to_place)
+
+	local resources_to_place = {
+	{self.horse_ID, horse_amt, 100, 2, 5} };
+	self:ProcessResourceList(33, 1, self.dry_grass_flat_no_feature, resources_to_place)
+	local resources_to_place = {
+	{self.horse_ID, horse_amt, 100, 1, 4} };
+	self:ProcessResourceList(33, 1, self.plains_flat_no_feature, resources_to_place)
+
+	self:AddModernMinorStrategicsToCityStates() -- Added spring 2011
+	
+	self:PlaceSmallQuantitiesOfStrategics(23 * bonus_multiplier, self.land_list);
+	
+	self:PlaceOilInTheSea();
+
+	
+	-- Check for low or missing Strategic resources
+	if self.amounts_of_resources_placed[self.iron_ID + 1] < 8 then
+		--print("Map has very low iron, adding another.");
+		local resources_to_place = { {self.iron_ID, iron_amt, 100, 0, 0} };
+		self:ProcessResourceList(99999, 1, self.hills_list, resources_to_place) -- 99999 means one per that many tiles: a single instance.
+	end
+	if self.amounts_of_resources_placed[self.iron_ID + 1] < 4 * self.iNumCivs then
+		--print("Map has very low iron, adding another.");
+		local resources_to_place = { {self.iron_ID, iron_amt, 100, 0, 0} };
+		self:ProcessResourceList(99999, 1, self.land_list, resources_to_place)
+	end
+	if self.amounts_of_resources_placed[self.horse_ID + 1] < 4 * self.iNumCivs then
+		--print("Map has very low horse, adding another.");
+		local resources_to_place = { {self.horse_ID, horse_amt, 100, 0, 0} };
+		self:ProcessResourceList(99999, 1, self.plains_flat_no_feature, resources_to_place)
+	end
+	if self.amounts_of_resources_placed[self.horse_ID + 1] < 4 * self.iNumCivs then
+		--print("Map has very low horse, adding another.");
+		local resources_to_place = { {self.horse_ID, horse_amt, 100, 0, 0} };
+		self:ProcessResourceList(99999, 1, self.dry_grass_flat_no_feature, resources_to_place)
+	end
+	if self.amounts_of_resources_placed[self.coal_ID + 1] < 8 then
+		--print("Map has very low coal, adding another.");
+		local resources_to_place = { {self.coal_ID, coal_amt, 100, 0, 0} };
+		self:ProcessResourceList(99999, 1, self.hills_list, resources_to_place)
+	end
+	if self.amounts_of_resources_placed[self.coal_ID + 1] < 4 * self.iNumCivs then
+		--print("Map has very low coal, adding another.");
+		local resources_to_place = { {self.coal_ID, coal_amt, 100, 0, 0} };
+		self:ProcessResourceList(99999, 1, self.land_list, resources_to_place)
+	end
+	if self.amounts_of_resources_placed[self.oil_ID + 1] < 4 * self.iNumCivs then
+		--print("Map has very low oil, adding another.");
+		local resources_to_place = { {self.oil_ID, oil_amt, 100, 0, 0} };
+		self:ProcessResourceList(99999, 1, self.land_list, resources_to_place)
+	end
+	if self.amounts_of_resources_placed[self.aluminum_ID + 1] < 4 * self.iNumCivs then
+		--print("Map has very low aluminum, adding another.");
+		local resources_to_place = { {self.aluminum_ID, alum_amt, 100, 0, 0} };
+		self:ProcessResourceList(99999, 1, self.hills_list, resources_to_place)
+	end
+	if self.amounts_of_resources_placed[self.uranium_ID + 1] < 2 * self.iNumCivs then
+		--print("Map has very low uranium, adding another.");
+		local resources_to_place = { {self.uranium_ID, uran_amt, 100, 0, 0} };
+		self:ProcessResourceList(99999, 1, self.land_list, resources_to_place)
+	end
+	
+	
+	-- Place Bonus Resources
+	print("Map Generation - Placing Bonuses");
+	self:PlaceFish(mc.freqFish * bonus_multiplier, self.coast_list);
+	self:PlaceSexyBonusAtCivStarts()
+	self:AddExtraBonusesToHillsRegions()
+	
+	local resources_to_place = {
+	{self.deer_ID, 1, 100, 1, 2} };
+	self:ProcessResourceList(8 * bonus_multiplier, 3, self.extra_deer_list, resources_to_place)
+
+	local resources_to_place = {
+	{self.wheat_ID, 1, 100, 0, 2} };
+	self:ProcessResourceList(10 * bonus_multiplier, 3, self.desert_wheat_list, resources_to_place)
+
+	local resources_to_place = {
+	{self.deer_ID, 1, 100, 1, 2} };
+	self:ProcessResourceList(12 * bonus_multiplier, 3, self.tundra_flat_no_feature, resources_to_place)
+
+	local resources_to_place = {
+	{self.banana_ID, 1, 100, 0, 3} };
+	self:ProcessResourceList(14 * bonus_multiplier, 3, self.banana_list, resources_to_place)
+
+	local resources_to_place = {
+	{self.wheat_ID, 1, 100, 2, 3} };
+	self:ProcessResourceList(27 * bonus_multiplier, 3, self.plains_flat_no_feature, resources_to_place)
+
+	local resources_to_place = {
+	{self.cow_ID, 1, 100, 1, 2} };
+	self:ProcessResourceList(18 * bonus_multiplier, 3, self.grass_flat_no_feature, resources_to_place)
+
+	local resources_to_place = {
+	{self.stone_ID, 1, 100, 1, 1} };
+	self:ProcessResourceList(20 * bonus_multiplier, 3, self.dry_grass_flat_no_feature, resources_to_place)
+
+	local resources_to_place = {
+	{self.sheep_ID, 1, 100, 1, 1} };
+	self:ProcessResourceList(13 * bonus_multiplier, 3, self.hills_open_list, resources_to_place)
+
+	local resources_to_place = {
+	{self.stone_ID, 1, 100, 1, 2} };
+	self:ProcessResourceList(15 * bonus_multiplier, 3, self.tundra_flat_no_feature, resources_to_place)
+
+	local resources_to_place = {
+	{self.stone_ID, 1, 100, 1, 2} };
+	self:ProcessResourceList(19 * bonus_multiplier, 3, self.desert_flat_no_feature, resources_to_place)
+
+	local resources_to_place = {
+	{self.deer_ID, 1, 100, 3, 4} };
+	self:ProcessResourceList(25 * bonus_multiplier, 3, self.forest_flat_that_are_not_tundra, resources_to_place)
+end
+------------------------------------------------------------------------------
+function AssignStartingPlots:PlaceFish(frequency, plot_list)
+	-- This function places fish at members of plot_list. (Sounds fishy to me!)
+	if plot_list == nil then
+		print("No fish were placed! -PlaceFish");
+		return
+	end
+	local iW, iH = Map.GetGridSize();
+	local iNumTotalPlots = table.maxn(plot_list);
+	local iNumFishToPlace = math.ceil(iNumTotalPlots / frequency);
+	print("FISH => i place " .. iNumFishToPlace .. " fishs!!!!! from already placed: " .. self.amounts_of_resources_placed[self.fish_ID + 1]);
+	
+	print("FISH => iNumTotalPlots = " .. iNumTotalPlots );
+	print("FISH => frequency = " .. frequency );
+	-- Main loop
+	local current_index = 1;
+	for place_resource = 1, iNumFishToPlace do
+		local placed_this_res = false;
+		if current_index <= iNumTotalPlots then
+			for index_to_check = current_index, iNumTotalPlots do
+				if placed_this_res == true then
+					break
+				else
+					current_index = current_index + 1;
+				end
+				local plotIndex = plot_list[index_to_check];
+				if self.fishData[plotIndex] == 0 then
+					local x = (plotIndex - 1) % iW;
+					local y = (plotIndex - x - 1) / iW;
+					local res_plot = Map.GetPlot(x, y)
+					if res_plot:GetResourceType(-1) == -1 then
+						-- Placing fish here. First decide impact radius of this fish.
+						local fish_radius = Map.Rand(100, "Fish Radius - Place Fish LUA");
+						print("FISH fish_radius rand = " .. fish_radius);
+						if mc.fishSpaceArray[1] > fish_radius then
+							-- print("FISH mc.fishSpaceArray[1] = " .. mc.fishSpaceArray[1] .. " > " .. fish_radius);
+							fish_radius = 0;
+						elseif mc.fishSpaceArray[2] > fish_radius then
+							fish_radius = 1;
+						elseif mc.fishSpaceArray[3] > fish_radius then
+							fish_radius = 2;
+						elseif mc.fishSpaceArray[4] > fish_radius then
+							fish_radius = 3;
+						elseif mc.fishSpaceArray[5] > fish_radius then
+							fish_radius = 4;
+						elseif mc.fishSpaceArray[6] > fish_radius then
+							fish_radius = 5;
+						elseif mc.fishSpaceArray[7] > fish_radius then
+							fish_radius = 6;
+						else
+							fish_radius = 7;
+						end
+						print("FISH fish_radius = " .. fish_radius);
+						res_plot:SetResourceType(self.fish_ID, 1);
+						self:PlaceResourceImpact(x, y, 4, fish_radius);
+						placed_this_res = true;
+						self.amounts_of_resources_placed[self.fish_ID + 1] = self.amounts_of_resources_placed[self.fish_ID + 1] + 1;
+					end
+				end
+			end
+		end
+	end
+	print("FISH => has been place " .. self.amounts_of_resources_placed[self.fish_ID + 1] .. " fishs!!!!!");
+end
+------------------------------------------------------------------------------
 --~ mc = MapConstants:New()
 --~ PWRandSeed()
 
