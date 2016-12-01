@@ -224,7 +224,7 @@ function MapConstants:New()
 	mconst.FALLBACKFAULT = 5	--Not a true fault, used where a fake fault is needed
 
 	mconst.MultiPlayer = Game:IsNetworkMultiPlayer()
-
+	
 	-- set vars from custom options (and choose random)
 	mconst:InitializeWorldType()
 	mconst:InitializeUpliftCoefficients()
@@ -236,6 +236,8 @@ function MapConstants:New()
 	mconst:InitializeLakes()
 	mconst:InitializeIslands()
 	mconst:InitializeFishAbundance()
+	mconst:InitializeStrategicAbundance()
+	mconst:InitializeStrategicDistribution()
 	return mconst
 end
 -------------------------------------------------------------------------------------------
@@ -259,6 +261,98 @@ function MapConstants:InitializeFishAbundance()
 	if Map.GetCustomOption(self.OptFish) == 3 then
 		self.fishSpaceArray = {40,80,100,100,100,100,100,100};
 		self.freqFish = 3;
+	end
+end-------------------------------------------------------------------------------------------
+function MapConstants:InitializeStrategicDistribution()
+	if Map.GetCustomOption(self.OptStratDistrib) == 1 then
+		-- normal : cs first, one strat per capital (civ dependant)
+		self.majorNoRandomStrat = true;
+		self.majorNbEarlyStrat = 1;
+		self.majorNbLateStrat = 1;
+		self.minorNbStrat = 2;
+		self.minorMinEarlyStrat = 1;
+	else if Map.GetCustomOption(self.OptStratDistrib) == 2 then
+		-- equilibre : at least one tile of strat near the cap (iron and horse in radius 3, others in radius 5 or 6)
+		self.majorNoRandomStrat = true;
+		self.majorNbEarlyStrat = 2;
+		self.majorNbLateStrat = 2;
+		self.minorNbStrat = 1;
+		self.minorMinEarlyStrat = 0;
+	else if Map.GetCustomOption(self.OptStratDistrib) == 3 then
+		-- random (with at least one strat)
+		self.majorNoRandomStrat = false;
+		self.majorNbEarlyStrat = 1;
+		self.majorNbLateStrat = 1;
+		self.minorNbStrat = 1;
+		self.minorMinEarlyStrat = 0;
+	end
+end
+-------------------------------------------------------------------------------------------
+function MapConstants:InitializeStrategicAbundance()
+	self.nbIron = 10;
+	self.nbHorse = 8;
+	self.nbCoal = 10;
+	self.nbOil = 14;
+	self.nbAluminium = 10;
+	self.nbUranium = 10;
+	self.amounts_of_resources_to_place = {}
+	self.amounts_of_resources_to_place[iron_ID+1] = 10;
+	self.amounts_of_resources_to_place[horse_ID+1] = 8;
+	self.amounts_of_resources_to_place[coal_ID+1] = 10;
+	self.amounts_of_resources_to_place[oil_ID+1] = 14;
+	self.amounts_of_resources_to_place[aluminium_ID+1] = 10;
+	self.amounts_of_resources_to_place[uranium_ID+1] = 10;
+	self.spotSize = {};
+	if Map.GetCustomOption(self.OptStratSpotSize) == 1 then
+		-- normal spots
+		--iron & horse : 20% 30% 30% 20%
+		self.spotSize[iron_ID + 1] =		{20, 50, 80,100,100,100,100,100};
+		self.spotSize[horse_ID + 1] =		{20, 50, 80,100,100,100,100,100};
+		--coal : 0% 10% 20% 25% 25% 20%
+		self.spotSize[coal_ID + 1] =		{ 0, 10, 30, 55, 80,100,100,100};
+		--oil : 0% 10% 20% 25% 25% 20%
+		self.spotSize[oil_ID + 1] =			{ 0, 10, 30, 55, 80,100,100,100};
+		--aluminium : 0% 20% 20% 20% 20% 20%
+		self.spotSize[aluminium_ID + 1] =	{ 0, 20, 40, 60, 80,100,100,100};
+		--uranium : 0% 25% 25% 25% 25%
+		self.spotSize[uranium_ID + 1] =		{ 0, 25, 50, 75,100,100,100,100};
+	else if Map.GetCustomOption(self.OptStratSpotSize) == 2 then
+		-- fewer big spots
+		--iron & horse : 0% 10% 25% 25% 20% 20%
+		self.spotSize[iron_ID + 1] =		{ 0, 10, 35, 60, 80,100,100,100};
+		self.spotSize[horse_ID + 1] =		{ 0, 10, 35, 60, 80,100,100,100};
+		--coal : 0%  0% 10% 20% 25% 25% 10% 10%
+		self.spotSize[coal_ID + 1] =		{ 0,  0, 10, 30, 55, 80, 90,100};
+		--coal : 0%  0% 10% 20% 20% 20% 20% 10%
+		self.spotSize[oil_ID + 1] =			{ 0,  0, 10, 30, 50, 70, 80,100};
+		--aluminium : 0%  0% 20% 20% 20% 20% 10% 10%
+		self.spotSize[aluminium_ID + 1] =	{ 0,  0, 20, 40, 60, 80, 90,100};
+		--uranium : 0% 0% 20% 10% 25% 25% 10% 10%
+		self.spotSize[uranium_ID + 1] =		{ 0,  0, 20, 30, 55, 80, 90,100};
+	
+	else if Map.GetCustomOption(self.OptStratSpotSize) == 3 then
+		-- abundance of strategic resources
+		--iron & horse : 0% 10% 25% 25% 20% 20%
+		self.spotSize[iron_ID + 1] =		{ 0, 10, 35, 60, 80,100,100,100};
+		self.spotSize[horse_ID + 1] =		{ 0, 10, 35, 60, 80,100,100,100};
+		--coal : 0%  0% 10% 20% 20% 20% 15% 15%
+		self.spotSize[coal_ID + 1] =		{ 0,  0, 10, 30, 50, 70, 85,100};
+		--coal : 0%  0% 10% 20% 20% 20% 20% 10%
+		self.spotSize[oil_ID + 1] =			{ 0,  0, 10, 30, 50, 70, 80,100};
+		--aluminium : 0%  0% 20% 20% 20% 20% 10% 10%
+		self.spotSize[aluminium_ID + 1] =	{ 0,  0, 20, 40, 60, 80, 90,100};
+		--uranium : 0% 0% 20% 10% 25% 25% 10% 10%
+		self.spotSize[uranium_ID + 1] =		{ 0,  0, 20, 30, 55, 80, 90,100};
+		self.nbIron = math.abs(self.nbIron * 1.5);
+		self.nbHorse = math.abs(self.nbHorse * 1.5);
+		self.nbCoal = math.abs(self.nbCoal * 1.5);
+		self.nbOil = math.abs(self.nbOil * 1.5);
+		self.nbAluminium = math.abs(self.nbAluminium * 1.5);
+		self.nbUranium = math.abs(self.nbUranium * 1.5);
+		for id, val in self.amounts_of_resources_to_place do
+			self.amounts_of_resources_to_place[id] = val * 1.5;
+		end
+		
 	end
 end
 -------------------------------------------------------------------------------------------
@@ -7277,7 +7371,685 @@ function DetermineContinents()
 	print(string.format("Generated map in %.3f seconds.", os.clock() - Time))
 end
 
+function AssignStartingPlots:GetRing(radius, y)
+	if y / 2 > math.floor(y / 2) then
+		if(radius == 1) then
+			return firstRingYIsOdd 
+		elseif(radius == 2) then
+			return secondRingYIsOdd  
+		elseif(radius == 3) then
+			return thirdRingYIsOdd 
+		else
+			return nil
+		end
+	end
+		if(radius == 1) then
+			return firstRingYIsEven  
+		elseif(radius == 2) then
+			return secondRingYIsEven   
+		elseif(radius == 3) then
+			return thirdRingYIsEven  
+		else
+			return nil
+		end
+end
+-- function AssignStartingPlots:PlaceIron(pPlot, minR, maxR)
+
+	-- --construct the array of available terrain
+	-- local canBePlaced = 0
+	-- local plotTundra = {}
+	-- local plotDesert = {}
+	-- local plotHill = {}
+	-- local plotSnow = {}
+	-- for pEdgePlot in PlotRingIterator(pPlot, r, sector, anticlock) do
+		-- if(pEdgePlot:GetResourceType(-1) == -1) then
+			-- local terrainType = pEdgePlot::GetTerrainType();
+			-- if(terrainType == TerrainTypes.TERRAIN_TUNDRA) then
+				-- canBePlaced = canBePlaced + 1
+				-- table.insert(plotTundra, pEdgePlot)
+			-- end
+			-- if(terrainType == TerrainTypes.TERRAIN_DESERT) then
+				-- canBePlaced = canBePlaced + 1
+				-- table.insert(plotDesert, pEdgePlot)
+			-- end
+			-- if(pEdgePlot:IsHills()) then
+				-- canBePlaced = canBePlaced + 1
+				-- table.insert(plotHill, pEdgePlot)
+			-- end
+			-- if(terrainType == TerrainTypes.TERRAIN_SNOW) then
+				-- canBePlaced = canBePlaced + 1
+				-- table.insert(plotSnow, pEdgePlot)
+			-- end
+		-- end
+    -- end
+	
+	-- if(canBePlaced == 0) then
+		-- return 0;
+	-- end
+	
+	-- --choose nbResource to place
+	-- local nbResourcesPlaced = Map.Rand(100, "NbIron in a splot near spawn")
+	-- if mc.ironSpotSize[1] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 1;
+	-- elseif mc.ironSpotSize[2] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 2;
+	-- elseif mc.ironSpotSize[3] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 3;
+	-- elseif mc.ironSpotSize[4] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 4;
+	-- elseif mc.ironSpotSize[5] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 5;
+	-- elseif mc.ironSpotSize[6] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 6;
+	-- elseif mc.ironSpotSize[7] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 7;
+	-- else
+		-- nbResourcesPlaced = 8;
+	-- end
+	
+	-- --locate the plot to place it.
+	-- local searching = true
+	-- while(searching) then
+		-- local tempIndex = Map.Rand(100, "Choose terrainType")
+		-- if(tempIndex < mc.nbIronOnTundra) then
+			-- if(table.getn(plotTundra) > 0) then
+				-- tempIndex = Map.Rand(table.getn(plotTundra), "Choose terrainType")
+				-- plotTundra[tempIndex+1]:SetResourceType(self.iron_ID, nbResourcesPlaced);
+				-- searching = false
+			-- end
+		-- elseif(tempIndex < mc.nbIronOnTundra + mc.nbIronOnDesert) then
+			-- if(table.getn(plotDesert) > 0) then
+				-- tempIndex = Map.Rand(table.getn(plotDesert), "Choose terrainType")
+				-- plotDesert[tempIndex+1]:SetResourceType(self.iron_ID, nbResourcesPlaced);
+				-- searching = false
+			-- end
+		-- elseif(tempIndex < mc.nbIronOnTundra + mc.nbIronOnDesert + mc.nbIronOnHill) then
+			-- if(table.getn(plotHill) > 0) then
+				-- tempIndex = Map.Rand(table.getn(plotHill), "Choose terrainType")
+				-- plotHill[tempIndex+1]:SetResourceType(self.iron_ID, nbResourcesPlaced);
+				-- searching = false
+			-- end
+		-- else
+			-- if(table.getn(plotSnow) > 0) then
+				-- tempIndex = Map.Rand(table.getn(plotSnow), "Choose terrainType")
+				-- plotSnow[tempIndex+1]:SetResourceType(self.iron_ID, nbResourcesPlaced);
+				-- searching = false
+			-- end
+		-- end
+	-- end
+	
+	-- --update
+	-- self.amounts_of_resources_placed[self.iron_ID + 1] = self.amounts_of_resources_placed[self.iron_ID + 1] + nbResourcesPlaced
+	
+	-- return nbResourcesPlaced;
+-- end
+
+-- function chooseNbStratOnPlot(arrSizeSpot)
+	-- --choose nbResource to place
+	-- local nbResourcesPlaced = Map.Rand(100, "NbIron in a splot near spawn")
+	-- if arrSizeSpot[1] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 1;
+	-- elseif arrSizeSpot[2] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 2;
+	-- elseif arrSizeSpot[3] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 3;
+	-- elseif arrSizeSpot[4] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 4;
+	-- elseif arrSizeSpot[5] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 5;
+	-- elseif arrSizeSpot[6] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 6;
+	-- elseif arrSizeSpot[7] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 7;
+	-- else
+		-- nbResourcesPlaced = 8;
+	-- end
+
+-- end
+
+function AssignStartingPlots:PlaceStrategic(pPlot, minR, maxR, idResource, fctPlotChance, arrSizeSpot)
+
+	--construct the array of available terrain
+	local iW, iH = Map.GetGridSize();
+	local plots = {};
+	local badPlots = {};
+	for pEdgePlot in PlotRingIterator(pPlot, r, sector, anticlock) do
+		if(pEdgePlot:GetResourceType(-1) == -1) then
+			local chance = fctPlotChance(pEdgePlot);
+			if(chance > 0) then
+				local plotIndex = pEdgePlot:GetY() * iW + pEdgePlot:GetX() + 1;
+				if(impact_table[plotIndex] == 0) then
+					table.insert(plots, pEdgePlot);
+				else
+					table.insert(badPlots, pEdgePlot);
+				end
+			end
+		end
+    end
+	local nbPlots = table.getn(plots);
+	
+	if(nbPlots == 0) then
+		if(table.getn(badPlots) == 0) then
+			return 0;
+		else
+			plots = badPlots;
+			nbPlots = table.getn(plots);
+		end
+	end
+	
+	--choose nbResource to place
+	-- local nbResourcesPlaced = Map.Rand(100, "NbIron in a splot near spawn")
+	-- if arrSizeSpot[1] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 1;
+	-- elseif arrSizeSpot[2] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 2;
+	-- elseif arrSizeSpot[3] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 3;
+	-- elseif arrSizeSpot[4] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 4;
+	-- elseif arrSizeSpot[5] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 5;
+	-- elseif arrSizeSpot[6] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 6;
+	-- elseif arrSizeSpot[7] > nbResourcesPlaced then
+		-- nbResourcesPlaced = 7;
+	-- else
+		-- nbResourcesPlaced = 8;
+	-- end
+	
+	local nbResourcesPlaced = chooseNbStratOnPlot(arrSizeSpot);
+	
+	--locate the plot to place it.
+	local searching = true
+	while(searching) then
+		local tempIndex = Map.Rand(nbPlots, "Choose hex in array");
+		local plot = plots[tempIndex+1];
+		local choosen = Map.Rand(100, "Choose if resource can be placed");
+		if(fctPlotChance(plot) > choosen) then
+			plot:SetResourceType(idResource, nbResourcesPlaced);
+			self:PlaceResourceImpact(plot:GetX(), plot:GetY(), 1, 1);
+			searching = false;
+		end
+	end
+	
+	--update
+	self.amounts_of_resources_placed[idResource + 1] = self.amounts_of_resources_placed[idResource + 1] + nbResourcesPlaced;
+	mc.amounts_of_resources_to_place[idResource + 1] = mc.amounts_of_resources_to_place[idResource + 1] - nbResourcesPlaced;
+	
+	return nbResourcesPlaced;
+end
+
 ------------------------------------------------------------------------------
+function AssignStartingPlots:PlaceStrategicResourcesNew()
+	-- -- iron: 30% tundra, 27% desert, 27% hills, 16% snow
+	-- self.nbIronOnTundra = math.abs(mc.nbIron * 0.3)
+	-- self.nbIronOnDesert = math.abs(mc.nbIron * 0.27)
+	-- self.nbIronOnHills = math.abs(mc.nbIron * 0.27)
+	-- self.nbIronOnSnow = math.abs(mc.nbIron * 0.16)
+	-- -- horse: 50% grass, 50% plain
+	-- self.nbHorseOnGrass = math.abs(mc.nbHorse / 2)
+	-- self.nbHorseOnPlain = math.abs(mc.nbHorse / 2)
+	-- -- coal: 40% hill, 30% forest, 30% jungle
+	-- self.nbCoalOnHills = math.abs(mc.nbCoal * 0.4)
+	-- self.nbCoalOnForest = math.abs(mc.nbCoal * 0.3)
+	-- self.nbCoalOnJungle = math.abs(mc.nbCoal * 0.3)
+	-- -- oil: 15% tundra, 30% desert, 30% marsh, 25% snow
+	-- self.nbOilOnTundra = math.abs(mc.nbOil * 0.15)
+	-- self.nbOilOnDesert = math.abs(mc.nbOil * 0.3)
+	-- self.nbOilOnMarsh = math.abs(mc.nbOil * 0.3)
+	-- self.nbOilOnSnow = math.abs(mc.nbOil * 0.25)
+	-- -- Aluminium: 20% tundra, 20% snow, 60% hills
+	-- self.nbAluOnTundra = math.abs(mc.nbAluminium * 0.2)
+	-- self.nbAluOnSnow = math.abs(mc.nbAluminium * 0.2)
+	-- self.nbAluOnHills = math.abs(mc.nbAluminium * 0.6)
+	-- -- Uranium: 20% marsh, 40% forest, 40% jungle
+	-- self.nbUraOnMarsh = math.abs(mc.nbUranium * 0.2)
+	-- self.nbUraOnForest = math.abs(mc.nbUranium * 0.4)
+	-- self.nbUraOnJungle = math.abs(mc.nbUranium * 0.4)
+	
+	local earlyStrats = {iron_ID, horse_ID};
+	local lateStrats = {coal_ID, oil_ID, aluminium_ID, uranium_ID};
+	
+	--multiply by nbplayers
+	for id, val in mc.amounts_of_resources_to_place do
+		mc.amounts_of_resources_to_place[id] = val * self.iNumCivs;
+	end
+
+	-- these "chance" number are complicated to understand:
+	-- when we iterate on a plot, it give us the chance (on 100) we choose this one instead to continue iterating.
+	-- with 50 desert plots and 25 tundra plots, a 100% desert 100% tundra will place 67% of resource on desert and 33% on snow
+	--  it's the same with 20% desert and 20% tundra, but we may have a harder time to find the spots
+	-- 0% chance => impossible to have on resource, 1% on snow => it's possible to spawn on snow, but very improbable.
+	--  20-100% => plenty!
+	-- Having 100% desert and 2% grass is a way to increase the proba it could spawn on desert, but it's not a way to say "majority on desert"
+	--  because if we want to plant an iron near a settle territory and there are only grass, we will use the grass.
+	--  100% desert means "if we have the luck to find a suitable desert plot, i must use it for this resource plot"
+	self.chanceOfResourceOnPlot = {}
+	-- iron: tundra, desert, hills, snow
+	self.chanceOfResourceOnPlot[self.iron_ID + 1] = function(plot)
+		local terrainType = plot::GetTerrainType();
+		if(terrainType == TerrainTypes.TERRAIN_TUNDRA and featureType == FeatureTypes.NO_FEATURE) then
+			return 100
+		elseif(terrainType == TerrainTypes.TERRAIN_DESERT and featureType == FeatureTypes.NO_FEATURE) then
+			return 100
+		elseif(terrainType == TerrainTypes.TERRAIN_SNOW) then
+			return 20
+		elseif(plot:IsHills()) then
+			return 20
+		elseif(terrainType == TerrainTypes.TERRAIN_PLAIN) then
+			return 1
+		end
+		return 0
+	end
+	-- horse: grass & plain
+	self.chanceOfResourceOnPlot[self.horse_ID + 1] = function(plot)
+		local terrainType = plot::GetTerrainType();
+		if(terrainType == TerrainTypes.TERRAIN_GRASS) then
+			return 50
+		elseif(terrainType == TerrainTypes.TERRAIN_PLAIN) then
+			return 50
+		end
+		return 0
+	end
+	-- coal: hill, forest, jungle
+	self.chanceOfResourceOnPlot[self.coal_ID + 1] = function(plot)
+		local terrainType = plot::GetTerrainType();
+		local featureType = plot:GetFeatureType();
+		if(featureType == FeatureTypes.FEATURE_FOREST) then
+			return 30
+		elseif(featureType == FeatureTypes.FEATURE_JUNGLE) then
+			return 30
+		elseif(plot:IsHills()) then
+			return 30
+		end
+		return 0
+	end
+	-- oil: tundra, desert, marsh, snow
+	self.chanceOfResourceOnPlot[self.Oil_ID + 1] = function(plot)
+		local terrainType = plot::GetTerrainType();
+		local featureType = plot:GetFeatureType();
+		if(terrainType == TerrainTypes.TERRAIN_TUNDRA and featureType == FeatureTypes.NO_FEATURE) then
+			return 15
+		elseif(terrainType == TerrainTypes.TERRAIN_DESERT and featureType == FeatureTypes.NO_FEATURE) then
+			return 30
+		elseif(featureType == TerrainTypes.FEATURE_MARSH) then
+			return 30
+		elseif(terrainType == TerrainTypes.TERRAIN_SNOW) then
+			return 25
+		end
+		return 0
+	end
+	-- Aluminium: tundra, snow, hills
+	self.chanceOfResourceOnPlot[self.aluminum_ID + 1] = function(plot)
+		local terrainType = plot::GetTerrainType();
+		local featureType = plot:GetFeatureType();
+		if(terrainType == TerrainTypes.TERRAIN_TUNDRA) then
+			return 20
+		elseif(terrainType == TerrainTypes.TERRAIN_SNOW) then
+			return 20
+		elseif(plot:IsHills() and featureType == FeatureTypes.NO_FEATURE) then
+			return 60
+		end
+		return 0
+	end
+	-- Uranium: 20% marsh, 40% forest, 40% jungle
+	self.chanceOfResourceOnPlot[self.uranium_ID + 1] = function(plot)
+		local terrainType = plot::GetTerrainType();
+		local featureType = plot:GetFeatureType();
+		if(featureType == FeatureTypes.FEATURE_MARSH) then
+			return 20
+		elseif(featureType == FeatureTypes.FEATURE_FOREST) then
+			return 40
+		elseif(pfeatureType == FeatureTypes.FEATURE_JUNGLE) then
+			return 40
+		end
+		return 0
+	end
+	
+	self.anyLand = function(plot)
+		if(plot:GetPlotType() == PlotTypes.PLOT_OCEAN ) then
+			return 0;
+		else
+			return 100;
+		end
+	end
+
+
+	--first, place n strat near major settler
+	-- iterate on major spawn spot
+	for region_number = 1, self.iNumCivs do
+		local x = self.startingPlots[region_number][1];
+		local y = self.startingPlots[region_number][2];
+		local result = 0;
+
+		local stratToPlace = {table.unpack(earlyStrats)}
+		local maxNbStrat = table.getn(stratToPlace)
+		while(table.getn(stratToPlace) > maxNbStrat - mc.majorNbEarlyStrat) then
+			-- add a resource at random (radius 1-2 or 3 if not possible in 2)
+			--choose iron or horse
+			local stratToPlaceCopy = {table.unpack(stratToPlace)};
+			local stratPlaced = 0
+			local searchStratHex = true;
+			while(table.getn(stratToPlaceCopy) > 0 and searchStratHex) then
+				local index = Map.Rand(table.getn(stratToPlaceCopy), "Choose strat type") + 1
+				local stratType = stratToPlaceCopy[index];
+				result = PlaceStrategic(Map.GetPlot(x, y), 1,2, stratType, self.chanceOfResourceOnPlot[stratType + 1], mc.spotSize[stratType + 1]);
+				if(result ~= 0) then
+					stratPlaced = stratType;
+					searchStratHex = false;
+				else
+					table.remove(stratToPlaceCopy, index);
+				end
+			end
+			if(result == 0) then
+				stratToPlaceCopy = {table.unpack(stratToPlace)};
+				searchStratHex = true;
+				while(table.getn(stratToPlaceCopy) > 0 and searchStratHex) then
+					local index = Map.Rand(table.getn(stratToPlaceCopy), "Choose strat type") + 1
+					local stratType = stratToPlaceCopy[index];
+					result = PlaceStrategic(Map.GetPlot(x, y), 3,3, stratType, self.chanceOfResourceOnPlot[stratType + 1], mc.spotSize[stratType + 1]);
+					if(result ~= 0) then
+						stratPlaced = stratType;
+						searchStratHex = false;
+					else
+						table.remove(stratToPlaceCopy, index);
+					end
+				end
+			end
+			--if result == 0, then must be placed on a random not-sea terrain //todo
+			if(result == 0) then
+				local index = Map.Rand(table.getn(stratToPlace), "Choose strat type") + 1
+				local stratType = stratToPlace[index];
+				result = PlaceStrategic(Map.GetPlot(x, y), 2,3, stratType, self.anyLand, mc.spotSize[stratType + 1]);
+				stratPlaced = stratType;
+			end
+			
+			if(result > 0) then
+				for i = 1,table.getn(stratToPlace) do
+					if(stratToPlace[i] == stratPlaced) then
+						table.remove(stratToPlace, i);
+					end
+				end
+				-- update vars
+				-- if(mc.majorNoRandomStrat) then
+					-- -- add interdiction radius near this spawn point
+					-- --self:PlaceResourceImpact(x, y, 1, 3);
+				-- end
+			end
+		end
+	end
+	
+	--second, place late strats ~near major settler
+	-- iterate on major spawn spot
+	for region_number = 1, self.iNumCivs do
+		local x = self.startingPlots[region_number][1];
+		local y = self.startingPlots[region_number][2];
+		local result = 0;
+
+		local stratToPlace = {table.unpack(lateStrats)}
+		local maxNbStrat = table.getn(stratToPlace)
+		while(table.getn(stratToPlace) > maxNbStrat - mc.majorNbLateStrat) then
+			-- add a resource at random (radius 1-2 or 3 if not possible in 2)
+			--choose iron or horse
+			local stratToPlaceCopy = {table.unpack(stratToPlace)};
+			local stratPlaced = 0
+			local searchStratHex = true;
+			while(table.getn(stratToPlaceCopy) > 0 and searchStratHex) then
+				local index = Map.Rand(table.getn(stratToPlaceCopy), "Choose strat type") + 1
+				local stratType = stratToPlaceCopy[index];
+				result = PlaceStrategic(Map.GetPlot(x, y), 2,4, stratType, self.chanceOfResourceOnPlot[stratType + 1], mc.spotSize[stratType + 1]);
+				if(result ~= 0) then
+					stratPlaced = stratType;
+					searchStratHex = false;
+				else
+					table.remove(stratToPlaceCopy, index);
+				end
+			end
+			--if result == 0, then must be placed on a random not-sea terrain //todo
+			if(result == 0) then
+				local index = Map.Rand(table.getn(stratToPlace), "Choose strat type") + 1
+				local stratType = stratToPlace[index];
+				result = PlaceStrategic(Map.GetPlot(x, y), 2,4, stratType, self.anyLand, mc.spotSize[stratType + 1]);
+				stratPlaced = stratType;
+			end
+			
+			if(result > 0) then
+				for i = 1,table.getn(stratToPlace) do
+					if(stratToPlace[i] == stratPlaced) then
+						table.remove(stratToPlace, i);
+					end
+				end
+				-- update vars
+				-- if(mc.majorNoRandomStrat) then
+					-- -- add interdiction radius near this spawn point
+					-- --self:PlaceResourceImpact(x, y, 1, 3);
+				-- end
+			end
+		end
+	end
+	
+	-- create interdiction near spawn point
+	if(mc.majorNoRandomStrat) then
+		for region_number = 1, self.iNumCivs do
+			local x = self.startingPlots[region_number][1];
+			local y = self.startingPlots[region_number][2];
+			self:PlaceResourceImpact(x, y, 1, 3);
+		end
+	end
+	
+	--place strat at CS
+	if(mc.minorNbStrat > 0) then
+		--second, place late strats ~near major settler
+		-- iterate on major spawn spot
+		for city_state  = 1, self.iNumCityStates do
+			if self.city_state_validity_table[city_state] == true then
+				
+				local x = self.cityStatePlots[city_state ][1];
+				local y = self.cityStatePlots[city_state ][2];
+				local result = 0;
+
+				local earlyStratToPlace = {table.unpack(earlyStrats)} --minorMinEarlyStrat
+				local stratToPlace = {table.unpack(earlyStrats)}
+				for stratTemp in lateStrats do
+					table.insert(stratToPlace, stratTemp);
+				end
+				local maxNbStrat = table.getn(stratToPlace)
+				while(table.getn(stratToPlace) > maxNbStrat - mc.minorNbStrat) then
+					-- add a resource at random (radius 1-2 or 3 if not possible in 2)
+					--choose iron or horse
+					local stratToPlaceCopy = {} --table.unpack(stratToPlace)};
+					if(maxNbStrat - table.getn(stratToPlace) < mc.minorMinEarlyStrat) then
+						stratToPlaceCopy = {table.unpack(earlyStratToPlace)};
+					else
+						stratToPlaceCopy = {table.unpack(stratToPlace)};
+					end
+					local stratPlaced = 0
+					local searchStratHex = true;
+					while(table.getn(stratToPlaceCopy) > 0 and searchStratHex) then
+						local index = Map.Rand(table.getn(stratToPlaceCopy), "Choose strat type") + 1
+						local stratType = stratToPlaceCopy[index];
+						result = PlaceStrategic(Map.GetPlot(x, y), 1,2, stratType, self.chanceOfResourceOnPlot[stratType + 1], mc.spotSize[stratType + 1]);
+						if(result ~= 0) then
+							stratPlaced = stratType;
+							searchStratHex = false;
+						else
+							table.remove(stratToPlaceCopy, index);
+						end
+					end
+					if(result == 0) then
+						if(maxNbStrat - table.getn(stratToPlace) < mc.minorMinEarlyStrat) then
+							stratToPlaceCopy = {table.unpack(earlyStratToPlace)};
+						else
+							stratToPlaceCopy = {table.unpack(stratToPlace)};
+						end
+						searchStratHex = true;
+						while(table.getn(stratToPlaceCopy) > 0 and searchStratHex) then
+							local index = Map.Rand(table.getn(stratToPlaceCopy), "Choose strat type") + 1
+							local stratType = stratToPlaceCopy[index];
+							result = PlaceStrategic(Map.GetPlot(x, y), 3,3, stratType, self.chanceOfResourceOnPlot[stratType + 1], mc.spotSize[stratType + 1]);
+							if(result ~= 0) then
+								stratPlaced = stratType;
+								searchStratHex = false;
+							else
+								table.remove(stratToPlaceCopy, index);
+							end
+						end
+					end
+					--if result == 0, then must be placed on a random not-sea terrain //todo
+					if(result == 0) then
+						local index = Map.Rand(table.getn(stratToPlace), "Choose strat type") + 1
+						local stratType = stratToPlace[index];
+						result = PlaceStrategic(Map.GetPlot(x, y), 3,3, stratType, self.anyLand, mc.spotSize[stratType + 1]);
+						stratPlaced = stratType;
+					end
+					
+					if(result > 0) then
+						for i = 1,table.getn(stratToPlace) do
+							if(stratToPlace[i] == stratPlaced) then
+								table.remove(stratToPlace, i);
+								break;
+							end
+						end
+						-- add interdiction radius near this spawn point
+						self:PlaceResourceImpact(x, y, 1, 3);
+					end
+				end
+			end
+		end
+	end
+	
+	-- placeStrat on empty islands
+	BuffIslandsWithLateStrat(lateStrats, self.chanceOfResourceOnPlot);
+	
+	-- now we can place the leftover (if any) at random on the map
+	local toPlace = 0;
+	local stratToPlace = {}
+	for idResource in earlyStrats do
+		if( mc.amounts_of_resources_to_place[idResource + 1] > 0) then
+			table.insert(stratToPlace, stratTemp);
+			toPlace = toPlace + mc.amounts_of_resources_to_place[idResource + 1];
+		end
+	end
+	for idResource in lateStrats do
+		if( mc.amounts_of_resources_to_place[idResource + 1] > 0) then
+			table.insert(stratToPlace, stratTemp);
+			toPlace = toPlace + mc.amounts_of_resources_to_place[idResource + 1];
+		end
+	end
+	for plotID, plot in Plots(Shuffle) do
+		if(toPlace <= 0)then break; end
+		if(plot:GetResourceType(-1) == -1) then
+			local plotIndex = pEdgePlot:GetY() * iW + pEdgePlot:GetX() + 1;
+			if(impact_table[plotIndex] == 0) then
+				--choose a resource
+				local index = Map.Rand(table.getn(stratToPlace), "Choose random strat type") + 1
+				local stratType = stratToPlace[index];
+				-- try his chance
+				local chance = mc.spotSize[stratType + 1](plot);
+				if(chance > Map.Rand(100, "Roll random strat chance")) then
+					local nbResourcesPlaced = chooseNbStratOnPlot(mc.spotSize[stratType + 1]);
+					plot:SetResourceType(stratType, nbResourcesPlaced);
+					self:PlaceResourceImpact(plot:GetX(), plot:GetY(), 1, 3);
+					self.amounts_of_resources_placed[stratType + 1] = self.amounts_of_resources_placed[stratType + 1] + nbResourcesPlaced;
+					mc.amounts_of_resources_to_place[stratType + 1] = mc.amounts_of_resources_to_place[stratType + 1] - nbResourcesPlaced;
+					nbResToPlaceInArea[area:GetId()] = 0;
+					toPlace = toPlace - nbResourcesPlaced;
+					-- a resource is depleted, don't add any!
+					if( mc.amounts_of_resources_to_place[stratType + 1] < 0)then
+						toPlace = toPlace - mc.amounts_of_resources_to_place[stratType + 1];
+						for i = 1,table.getn(stratType) do
+							if(stratToPlace[i] == stratPlaced) then
+								table.remove(stratToPlace, i);
+								break;
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+end
+
+-- like the one on communitas
+function AssignStartingPlots:BuffIslandsWithLateStrat(lateStrats, canBePlaced)
+	print("Buffing Tiny Islands")
+	local biggestAreaSize = Map.FindBiggestArea(false):GetNumTiles()
+	if biggestAreaSize < 20 then
+		print("Not not archipalegos")
+		-- Skip on archipalego maps
+		return
+	end
+	-- max 1 strat bonus for each island
+	local toPlace = 0
+	local nbResToplaceInArea = {}
+	for iAreaId, pArea in Map.Areas() do
+		if(IsBetween(3, pArea:GetNumTiles(), 0.05 * biggestAreaSize)) then
+			nbResToplaceInArea[iAreaId] = 1;
+			toPlace = toPlace + 1;
+		else
+			nbResToplaceInArea[iAreaId] = 0;
+		end
+	end
+	--iterate on all possible plots
+	-- todo: find a way to iterate on islands plots, and replicate what is done for the starting 
+	local nbFail = 1;
+	for plotID, plot in Plots(Shuffle) do
+		if(toPlace == 0)then break;	end
+		local plotType		= plot:GetPlotType()
+		local terrainType	= plot:GetTerrainType()
+		local area			= plot:Area()
+		-- if plot is land and in an unbuffed island
+		if ((plotType == PlotTypes.PLOT_HILLS or plotType == PlotTypes.PLOT_LAND )
+				and plot:GetResourceType() == -1
+				and nbResToPlaceInArea[area:GetId()] > 0
+				and not self.islandAreaBuffed[area:GetID()]
+				)then
+			local plotIndex = pEdgePlot:GetY() * iW + pEdgePlot:GetX() + 1;
+			if(impact_table[plotIndex] == 0) then
+			
+				-- create an array of possible strat to place.
+				local possibleStrats = {}
+				local maxProba = 0
+				for idResource in lateStrats do
+					if(canBePlaced[idResource + 1](plot) > 0 and mc.amounts_of_resources_to_place[idResource + 1] > 0) then
+						maxProba = maxProba + mc.amounts_of_resources_to_place[idResource + 1];
+						possibleStrats[idResource] = mc.amounts_of_resources_to_place[idResource + 1];
+					end
+				end
+				
+				if(maxProba > 0) then
+					-- choice of resource
+					if( (100 - mc.probaBuffIslandStrat) / nbFail < Map.Rand(100, "BuffIslandsStrat Chance - Lua") )then
+						local resChance = Map.Rand(maxProba, "BuffIslandsStrat res choice - Lua")
+						
+						for idResource, chance in possibleStrats do
+							if(resChance >= chance) then
+								local nbResourcesPlaced = chooseNbStratOnPlot(mc.spotSize[idResource + 1]);
+								plot:SetResourceType(idResource, nbResourcesPlaced);
+								self:PlaceResourceImpact(plot:GetX(), plot:GetY(), 1, 3);
+								self.amounts_of_resources_placed[idResource + 1] = self.amounts_of_resources_placed[idResource + 1] + nbResourcesPlaced;
+								mc.amounts_of_resources_to_place[idResource + 1] = mc.amounts_of_resources_to_place[idResource + 1] - nbResourcesPlaced;
+								nbResToPlaceInArea[area:GetId()] = 0;
+								toPlace = toPlace - 1;
+								nbFail = 1;
+								break;
+							else
+								resChance = resChance - chance
+							end
+						end
+					end
+				else
+					-- if an island is incompatible, give your chance to the next one
+					nbFail = nbFail + 1
+				end
+			else
+				-- if an island is too close to an other strat, give your chance to the next one
+				nbFail = nbFail + 1
+			end
+		end
+	end
+end
+
 function AssignStartingPlots:PlaceStrategicAndBonusResources()
 	-- KEY: {Resource ID, Quantity (0 = unquantified), weighting, minimum radius, maximum radius}
 	-- KEY: (frequency (1 per n plots in the list), impact list number, plot list, resource data)
@@ -7452,6 +8224,7 @@ end
 ------------------------------------------------------------------------------
 function AssignStartingPlots:PlaceFish(frequency, plot_list)
 	-- This function places fish at members of plot_list. (Sounds fishy to me!)
+	--note: plot_list should only contains coast tiles
 	if plot_list == nil then
 		print("No fish were placed! -PlaceFish");
 		return
@@ -7459,7 +8232,7 @@ function AssignStartingPlots:PlaceFish(frequency, plot_list)
 	local iW, iH = Map.GetGridSize();
 	local iNumTotalPlots = table.maxn(plot_list);
 	local iNumFishToPlace = math.ceil(iNumTotalPlots / frequency);
-	print("FISH => i place " .. iNumFishToPlace .. " fishs!!!!! from already placed: " .. self.amounts_of_resources_placed[self.fish_ID + 1]);
+	print("FISH => I want to add " .. iNumFishToPlace .. " fishs!!!!! from already placed: " .. self.amounts_of_resources_placed[self.fish_ID + 1]);
 	
 	print("FISH => iNumTotalPlots = " .. iNumTotalPlots );
 	print("FISH => frequency = " .. frequency );
@@ -7479,31 +8252,34 @@ function AssignStartingPlots:PlaceFish(frequency, plot_list)
 					local x = (plotIndex - 1) % iW;
 					local y = (plotIndex - x - 1) / iW;
 					local res_plot = Map.GetPlot(x, y)
+					--todo: check resource inpact ?
 					if res_plot:GetResourceType(-1) == -1 then
 						-- Placing fish here. First decide impact radius of this fish.
-						local fish_radius = Map.Rand(100, "Fish Radius - Place Fish LUA");
-						print("FISH fish_radius rand = " .. fish_radius);
-						if mc.fishSpaceArray[1] > fish_radius then
-							-- print("FISH mc.fishSpaceArray[1] = " .. mc.fishSpaceArray[1] .. " > " .. fish_radius);
-							fish_radius = 0;
-						elseif mc.fishSpaceArray[2] > fish_radius then
-							fish_radius = 1;
-						elseif mc.fishSpaceArray[3] > fish_radius then
-							fish_radius = 2;
-						elseif mc.fishSpaceArray[4] > fish_radius then
-							fish_radius = 3;
-						elseif mc.fishSpaceArray[5] > fish_radius then
-							fish_radius = 4;
-						elseif mc.fishSpaceArray[6] > fish_radius then
-							fish_radius = 5;
-						elseif mc.fishSpaceArray[7] > fish_radius then
-							fish_radius = 6;
-						else
-							fish_radius = 7;
-						end
-						print("FISH fish_radius = " .. fish_radius);
+						-- local fish_radius = Map.Rand(100, "Fish Radius - Place Fish LUA");
+						-- print("FISH fish_radius rand = " .. fish_radius);
+						-- if mc.fishSpaceArray[1] > fish_radius then
+							-- -- print("FISH mc.fishSpaceArray[1] = " .. mc.fishSpaceArray[1] .. " > " .. fish_radius);
+							-- fish_radius = 0;
+						-- elseif mc.fishSpaceArray[2] > fish_radius then
+							-- fish_radius = 1;
+						-- elseif mc.fishSpaceArray[3] > fish_radius then
+							-- fish_radius = 2;
+						-- elseif mc.fishSpaceArray[4] > fish_radius then
+							-- fish_radius = 3;
+						-- elseif mc.fishSpaceArray[5] > fish_radius then
+							-- fish_radius = 4;
+						-- elseif mc.fishSpaceArray[6] > fish_radius then
+							-- fish_radius = 5;
+						-- elseif mc.fishSpaceArray[7] > fish_radius then
+							-- fish_radius = 6;
+						-- else
+							-- fish_radius = 7;
+						-- end
+						-- print("FISH fish_radius = " .. fish_radius);
+						-- -- note: the fish resource inpact are not used at all, it's purely a random distribution.
+						-- -- it's done like that to allow clusters to be made for juicy lucky cities.
+						-- self:PlaceResourceImpact(x, y, 4, fish_radius);
 						res_plot:SetResourceType(self.fish_ID, 1);
-						self:PlaceResourceImpact(x, y, 4, fish_radius);
 						placed_this_res = true;
 						self.amounts_of_resources_placed[self.fish_ID + 1] = self.amounts_of_resources_placed[self.fish_ID + 1] + 1;
 					end
@@ -7511,9 +8287,138 @@ function AssignStartingPlots:PlaceFish(frequency, plot_list)
 			end
 		end
 	end
+	--todo: place the others fish at random
 	print("FISH => has been place " .. self.amounts_of_resources_placed[self.fish_ID + 1] .. " fishs!!!!!");
 end
 ------------------------------------------------------------------------------
+--- merill change: land bonus > sea bonus => seabonus > land bonus
+------------------------------------------------------------------------------
+function AssignStartingPlots:PlaceSexyBonusAtCivStarts()
+	-- This function will place a Bonus resource in the third ring around a Civ's start.
+	-- The added Bonus is meant to make the start look more sexy, so to speak.
+	-- Third-ring resources will take a long time to bring online, but will assist the site in the late game.
+	-- Alternatively, it may assist a different city if another city is settled close enough to the capital and takes control of this tile.
+	local iW, iH = Map.GetGridSize();
+	local wrapX = Map:IsWrapX();
+	local wrapY = Map:IsWrapY();
+	local odd = self.firstRingYIsOdd;
+	local even = self.firstRingYIsEven;
+	local nextX, nextY, plot_adjustments;
+	
+	local bonus_type_associated_with_region_type = {self.deer_ID, self.banana_ID, 
+	self.deer_ID, self.wheat_ID, self.sheep_ID, self.wheat_ID, self.cow_ID, self.cow_ID};
+	
+	for region_number = 1, self.iNumCivs do
+		local x = self.startingPlots[region_number][1];
+		local y = self.startingPlots[region_number][2];
+		local region_type = self.regionTypes[region_number];
+		local use_this_ID = bonus_type_associated_with_region_type[region_type];
+		local plot_list, fish_list = {}, {};
+		-- For notes on how the hex-iteration works, refer to PlaceResourceImpact()
+		local ripple_radius = 3;
+		local currentX = x - ripple_radius;
+		local currentY = y;
+		for direction_index = 1, 6 do
+			for plot_to_handle = 1, ripple_radius do
+			 	if currentY / 2 > math.floor(currentY / 2) then
+					plot_adjustments = odd[direction_index];
+				else
+					plot_adjustments = even[direction_index];
+				end
+				nextX = currentX + plot_adjustments[1];
+				nextY = currentY + plot_adjustments[2];
+				if wrapX == false and (nextX < 0 or nextX >= iW) then
+					-- X is out of bounds.
+				elseif wrapY == false and (nextY < 0 or nextY >= iH) then
+					-- Y is out of bounds.
+				else
+					local realX = nextX;
+					local realY = nextY;
+					if wrapX then
+						realX = realX % iW;
+					end
+					if wrapY then
+						realY = realY % iH;
+					end
+					-- We've arrived at the correct x and y for the current plot.
+					local plot = Map.GetPlot(realX, realY);
+					local featureType = plot:GetFeatureType()
+					if plot:GetResourceType(-1) == -1 and featureType ~= FeatureTypes.FEATURE_OASIS then -- No resource or Oasis here, safe to proceed.
+						local plotType = plot:GetPlotType()
+						local terrainType = plot:GetTerrainType()
+						local plotIndex = realY * iW + realX + 1;
+						-- Now check this plot for eligibility for the applicable Bonus type for this region.
+						if use_this_ID == self.deer_ID then
+							if featureType == FeatureTypes.FEATURE_FOREST then
+								table.insert(plot_list, plotIndex);
+							elseif terrainType == TerrainTypes.TERRAIN_TUNDRA and plotType == PlotTypes.PLOT_LAND then
+								table.insert(plot_list, plotIndex);
+							end
+						elseif use_this_ID == self.banana_ID then
+							if featureType == FeatureTypes.FEATURE_JUNGLE then
+								table.insert(plot_list, plotIndex);
+							end
+						elseif use_this_ID == self.wheat_ID then
+							if plotType == PlotTypes.PLOT_LAND then
+								if terrainType == TerrainTypes.TERRAIN_PLAINS and featureType == FeatureTypes.NO_FEATURE then
+									table.insert(plot_list, plotIndex);
+								elseif featureType == FeatureTypes.FEATURE_FLOOD_PLAINS then
+									table.insert(plot_list, plotIndex);
+								elseif terrainType == TerrainTypes.TERRAIN_DESERT and plot:IsFreshWater() then
+									table.insert(plot_list, plotIndex);
+								end
+							end
+						elseif use_this_ID == self.sheep_ID then
+							if plotType == PlotTypes.PLOT_HILLS and featureType == FeatureTypes.NO_FEATURE then
+								if terrainType == TerrainTypes.TERRAIN_PLAINS or terrainType == TerrainTypes.TERRAIN_GRASS or terrainType == TerrainTypes.TERRAIN_TUNDRA then
+									table.insert(plot_list, plotIndex);
+								end
+							end
+						elseif use_this_ID == self.cow_ID then
+							if terrainType == TerrainTypes.TERRAIN_GRASS and plotType == PlotTypes.PLOT_LAND then
+								if featureType == FeatureTypes.NO_FEATURE then
+									table.insert(plot_list, plotIndex);
+								end
+							end
+						end
+						if plotType == PlotTypes.PLOT_OCEAN then
+							if not plot:IsLake() then
+								if featureType ~= self.feature_atoll and featureType ~= FeatureTypes.FEATURE_ICE then
+									if terrainType == TerrainTypes.TERRAIN_COAST then
+										table.insert(fish_list, plotIndex);
+									end
+								end
+							end
+						end
+					end
+				end
+				currentX, currentY = nextX, nextY;
+			end
+		end
+		local iFishCandidates = table.maxn(fish_list);
+		if iFishCandidates > 0 then
+			--print("Placing 'sexy Fish' in third ring of start location in Region#", region_number);
+			local shuf_list = GetShuffledCopyOfTable(fish_list)
+			local iNumLeftToPlace = self:PlaceSpecificNumberOfResources(self.fish_ID, 1, 1, 1, -1, 0, 0, shuf_list);
+		end
+		else
+			local iNumCandidates = table.maxn(plot_list);
+			if iNumCandidates > 0 then
+				--print("Placing 'sexy Bonus' in third ring of start location in Region#", region_number);
+				local shuf_list = GetShuffledCopyOfTable(plot_list)
+				local iNumLeftToPlace = self:PlaceSpecificNumberOfResources(use_this_ID, 1, 1, 1, -1, 0, 0, shuf_list);
+				if iNumCandidates > 1 and use_this_ID == self.sheep_ID then
+					-- Hills region, attempt to give them a second Sexy Sheep.
+					--print("Placing a second 'sexy Sheep' in third ring of start location in Hills Region#", region_number);
+					iNumLeftToPlace = self:PlaceSpecificNumberOfResources(use_this_ID, 1, 1, 1, -1, 0, 0, shuf_list);
+				end
+			end
+		end
+	end
+end
+------------------------------------------------
+
+
 --~ mc = MapConstants:New()
 --~ PWRandSeed()
 
